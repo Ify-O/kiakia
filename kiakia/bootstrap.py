@@ -1,6 +1,6 @@
 """Composition root: the ONE place that builds concrete objects and wires them together.
 
-Entry points (the CLI today, the web API later) ask this module for ready-made use
+Entry points (the CLI and the web API) ask this module for ready-made use
 cases and never import adapters themselves. Swapping Telegram for Meta, or adding
 a new channel, means changing wiring here only.
 
@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
 from kiakia.adapters.telegram.source import TelegramSource
+from kiakia.application.conversations import GetConversation, ListConversations, ListMessages
 from kiakia.application.import_messages import ImportMessages
 from kiakia.application.stats import GetInboxStats
 from kiakia.application.waiting import ListWaitingCustomers
@@ -42,6 +43,19 @@ class Services:
 
     def get_inbox_stats(self) -> GetInboxStats:
         return GetInboxStats(self.store)
+
+    def list_conversations(self) -> ListConversations:
+        return ListConversations(self.store)
+
+    def get_conversation(self) -> GetConversation:
+        return GetConversation(self.store)
+
+    def list_messages(self) -> ListMessages:
+        return ListMessages(self.store)
+
+    def check_health(self) -> None:
+        """Raises StorageUnavailable if the database can't be reached."""
+        self.store.ping()
 
 
 @contextmanager

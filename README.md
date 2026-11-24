@@ -80,13 +80,35 @@ uv run pytest
 
 Run the import as often as you like: a second run never creates duplicates.
 
+### Run the web API (Assignment 2)
+
+The API contract is [openapi.yaml](openapi.yaml), written **before** the code
+([decision records](docs/adr/README.md)).
+
+```bash
+uv run uvicorn kiakia.api.app:create_app_from_env --factory --reload
+```
+
+Then open <http://localhost:8000/docs> to browse and try the API (it shows `openapi.yaml` itself).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /v1/conversations` | List with filters (`status`, `channel`, `q`, `sort`) and cursor pagination |
+| `GET /v1/conversations/{id}` | One conversation with details |
+| `GET /v1/conversations/{id}/messages` | Its messages, newest first, paginated |
+| `POST /v1/conversations/{id}/replies` | Reply to the customer (idempotent). *Contract ready, implementation next* |
+| `GET /v1/stats` | Dashboard numbers |
+| `GET /health` | API + database health |
+
+Lint the contract: `npx @redocly/cli@2.83.0 lint openapi.yaml` (Node 22, see `.nvmrc`).
+
 ### Quality checks
 
 ```bash
 uv run ruff check .        # lint (incl. security rules)
 uv run ruff format .       # format
 uv run mypy                # strict type checking
-uv run pytest              # 54 unit + integration tests
+uv run pytest              # unit + integration + contract tests (incl. Schemathesis)
 ```
 
 The same checks run automatically on GitHub for every push and pull request

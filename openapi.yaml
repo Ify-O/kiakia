@@ -266,7 +266,7 @@ components:
     Cursor:
       name: cursor
       in: query
-      description: Opaque value from `page.nextCursor` of the previous page. Don't build or change it.
+      description: Opaque value from `page.nextCursor` of the previous page. Don't build or change it. Any value the server didn't issue for this list (and sort order) returns 400.
       schema:
         type: string
         minLength: 1
@@ -309,9 +309,9 @@ components:
           description: The customer's handle on the channel, if they have one.
           example: ada_test
 
-    ConversationSummary:
+    ConversationFields:
+      description: Fields shared by ConversationSummary and ConversationDetail (not used on its own).
       type: object
-      additionalProperties: false
       required:
         - id
         - channel
@@ -355,10 +355,16 @@ components:
           minimum: 0
           description: Customer messages since the last reply.
 
-    ConversationDetail:
-      description: A conversation with extra details about the customer.
+    ConversationSummary:
+      description: A conversation as shown in lists.
       allOf:
-        - $ref: "#/components/schemas/ConversationSummary"
+        - $ref: "#/components/schemas/ConversationFields"
+      unevaluatedProperties: false
+
+    ConversationDetail:
+      description: A conversation with extra details.
+      allOf:
+        - $ref: "#/components/schemas/ConversationFields"
         - type: object
           required: [createdAt, messageCount]
           properties:
@@ -368,6 +374,7 @@ components:
             messageCount:
               type: integer
               minimum: 0
+      unevaluatedProperties: false
 
     Message:
       type: object

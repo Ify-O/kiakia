@@ -5,9 +5,21 @@ implement them. That is the decoupling: swap or add an adapter and the use
 cases don't change. Each port is small (interface segregation).
 """
 
+from datetime import datetime
 from typing import Protocol
 
-from .models import FetchResult, InboxStats, Message, Reject, RunStatus, WaitingCustomer
+from .models import (
+    ConversationDetail,
+    ConversationFilter,
+    ConversationSummary,
+    FetchResult,
+    InboxStats,
+    Message,
+    Reject,
+    RunStatus,
+    StoredMessage,
+    WaitingCustomer,
+)
 
 
 class MessageSource(Protocol):
@@ -57,3 +69,29 @@ class StatsQuery(Protocol):
     """Read-only overview numbers (kept separate from MessageRepository: interface segregation)."""
 
     def inbox_stats(self) -> InboxStats: ...
+
+
+# A position in a sorted list: (sort time, id). Used for keyset pagination (docs/adr/0003).
+Keyset = tuple[datetime, int]
+
+
+class ConversationQuery(Protocol):
+    """Read side for browsing conversations (used by the API)."""
+
+    def list_conversations(
+        self, filters: ConversationFilter, limit: int, after: Keyset | None
+    ) -> list[ConversationSummary]:
+        """Up to `limit` conversations in `filters.sort` order, strictly after `after`."""
+        ...
+
+    def get_conversation(self, conversation_id: int) -> ConversationDetail | None: ...
+
+    def list_messages(self, conversation_id: int, limit: int, before: Keyset | None) -> list[StoredMessage]:
+        """Up to `limit` messages, newest first, strictly older than `before`."""
+        ...
+
+
+class HealthCheck(Protocol):
+    def ping(self) -> None:
+        """Raise StorageUnavailable if the storage can't be reached."""
+        ...

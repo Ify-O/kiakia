@@ -27,3 +27,11 @@ class SourceRejectedRequest(KiakiaError):
 
 class StorageUnavailable(KiakiaError):
     """The database could not be reached or refused the operation."""
+
+
+class NotFound(KiakiaError):
+    """The requested thing does not exist."""
+
+
+class InvalidCursor(KiakiaError):
+    """A pagination cursor is malformed, tampered with, or from a different list."""

@@ -111,3 +111,69 @@ class InboxStats:
     conversations: int
     messages: int
     by_kind: dict[MessageKind, int]
+    waiting: int = 0
+    oldest_waiting_since: datetime | None = None
+
+
+# ---------- Read models for browsing the inbox (API / UI) ----------
+
+
+class ConversationStatus(StrEnum):
+    WAITING = "waiting"  # the customer's last message has no reply yet
+    ANSWERED = "answered"
+
+
+class ConversationSort(StrEnum):
+    RECENT = "recent"  # most recent message first
+    LONGEST_WAITING = "longestWaiting"  # longest-waiting customer first (waiting only)
+
+
+@dataclass(frozen=True)
+class ConversationFilter:
+    status: ConversationStatus | None = None  # None = all
+    channel: Channel | None = None
+    search: str | None = None  # in the customer's name or username
+    sort: ConversationSort = ConversationSort.RECENT
+
+
+@dataclass(frozen=True)
+class ConversationSummary:
+    id: int
+    channel: Channel
+    contact_id: int
+    contact_name: str
+    contact_username: str | None
+    status: ConversationStatus
+    waiting_since: datetime | None
+    last_message_at: datetime
+    last_reply_at: datetime | None
+    last_message_preview: str | None
+    unanswered_count: int
+
+
+@dataclass(frozen=True)
+class ConversationDetail:
+    summary: ConversationSummary
+    created_at: datetime
+    message_count: int
+
+
+@dataclass(frozen=True)
+class StoredMessage:
+    """A message as stored by Kiakia (with our own id), for reading."""
+
+    id: int
+    conversation_id: int
+    direction: Direction
+    kind: MessageKind
+    body: str | None
+    has_media: bool
+    sent_at: datetime
+
+
+@dataclass(frozen=True)
+class Page[T]:
+    """One page of results. next_cursor is None on the last page."""
+
+    items: list[T]
+    next_cursor: str | None

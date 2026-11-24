@@ -1,6 +1,7 @@
 """PostgreSQL adapter: the ONLY place in Kiakia that reads or writes the database.
 
-Implements the MessageRepository, RejectStore, CursorStore, ImportRunLog and StatsQuery ports.
+Implements the MessageRepository, RejectStore, CursorStore, ImportRunLog, StatsQuery,
+ConversationQuery and HealthCheck ports.
 Uses psycopg 3, the current PostgreSQL driver for Python.
 
 - All SQL is parameterised (%s placeholders), never built from strings.
@@ -13,19 +14,27 @@ import json
 from typing import Any
 
 import psycopg
+from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from kiakia.domain.errors import StorageUnavailable
 from kiakia.domain.models import (
     Channel,
+    ConversationDetail,
+    ConversationFilter,
+    ConversationSort,
+    ConversationStatus,
+    ConversationSummary,
     Direction,
     InboxStats,
     Message,
     MessageKind,
     Reject,
     RunStatus,
+    StoredMessage,
     WaitingCustomer,
 )
+from kiakia.domain.ports import Keyset
 
 
 def connect(host: str, port: int, user: str, password: str, dbname: str) -> psycopg.Connection:
@@ -75,6 +84,96 @@ _WAITING_SQL = """
       AND (cv.last_outbound_at IS NULL OR cv.last_inbound_at > cv.last_outbound_at)
     ORDER BY waiting_since ASC
 """
+
+
+# One row per conversation with everything the inbox shows. A constant: no user input in it.
+# "waiting" = there are customer messages after the business's last reply.
+_CONVERSATIONS_CTE = """
+WITH conv AS (
+    SELECT cv.id, cv.channel, cv.created_at,
+           ct.id AS contact_id, ct.display_name, ident.username,
+           GREATEST(cv.last_inbound_at, cv.last_outbound_at) AS last_message_at,
+           cv.last_outbound_at,
+           unanswered.waiting_since,
+           unanswered.unanswered_count,
+           unanswered.unanswered_count > 0 AS waiting,
+           latest.preview
+    FROM conversations cv
+    JOIN contacts ct ON ct.id = cv.contact_id
+    LEFT JOIN LATERAL (
+        SELECT ci.username FROM contact_identities ci
+        WHERE ci.contact_id = ct.id AND ci.channel = cv.channel
+        ORDER BY ci.id LIMIT 1
+    ) ident ON true
+    LEFT JOIN LATERAL (
+        SELECT min(m.sent_at) AS waiting_since, count(*) AS unanswered_count
+        FROM messages m
+        WHERE m.conversation_id = cv.id AND m.direction = 'in'
+          AND m.sent_at > coalesce(cv.last_outbound_at, '-infinity')
+    ) unanswered ON true
+    LEFT JOIN LATERAL (
+        SELECT left(coalesce(m.body, '[' || m.kind || ']'), 120) AS preview
+        FROM messages m
+        WHERE m.conversation_id = cv.id AND m.direction = 'in'
+        ORDER BY m.sent_at DESC, m.id DESC LIMIT 1
+    ) latest ON true
+)
+"""
+
+_CONVERSATION_COLUMNS = """
+SELECT id, channel, contact_id, display_name, username, waiting, waiting_since,
+       last_message_at, last_outbound_at, preview, unanswered_count, created_at
+FROM conv
+"""
+
+
+# Fixed queries built once from constants (no input ever goes into the SQL text).
+_CONVERSATION_BY_ID = _CONVERSATIONS_CTE + _CONVERSATION_COLUMNS + " WHERE id = %s"
+_WAITING_SELECT = (
+    "SELECT count(*) FILTER (WHERE waiting), min(waiting_since) FILTER (WHERE waiting) FROM conv"
+)
+_WAITING_STATS = _CONVERSATIONS_CTE + _WAITING_SELECT
+_MESSAGES_PAGE = sql.SQL(
+    "SELECT id, conversation_id, direction, kind, body, media_ref IS NOT NULL, sent_at "
+    "FROM messages WHERE conversation_id = %s{keyset} ORDER BY sent_at DESC, id DESC LIMIT %s"
+)
+_MESSAGES_KEYSET = sql.SQL(" AND (sent_at, id) < (%s, %s)")
+
+
+def _like_pattern(text: str) -> str:
+    """Search text as a LIKE pattern, with LIKE's own wildcards escaped (so '100%' is literal)."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _summary(row: tuple[Any, ...]) -> ConversationSummary:
+    (
+        cid,
+        channel,
+        contact_id,
+        name,
+        username,
+        waiting,
+        waiting_since,
+        last_message_at,
+        last_outbound_at,
+        preview,
+        unanswered,
+        _created,
+    ) = row
+    return ConversationSummary(
+        id=cid,
+        channel=Channel(channel),
+        contact_id=contact_id,
+        contact_name=name,
+        contact_username=username,
+        status=ConversationStatus.WAITING if waiting else ConversationStatus.ANSWERED,
+        waiting_since=waiting_since if waiting else None,
+        last_message_at=last_message_at,
+        last_reply_at=last_outbound_at,
+        last_message_preview=preview,
+        unanswered_count=unanswered,
+    )
 
 
 class PostgresStore:
@@ -174,6 +273,88 @@ class PostgresStore:
             for name, channel, chat_id, since, preview in rows
         ]
 
+    # ---------- ConversationQuery ----------
+
+    def list_conversations(
+        self, filters: ConversationFilter, limit: int, after: Keyset | None
+    ) -> list[ConversationSummary]:
+        conditions: list[sql.Composable] = []
+        params: list[Any] = []
+        longest = filters.sort is ConversationSort.LONGEST_WAITING
+        if filters.status is ConversationStatus.WAITING or longest:
+            conditions.append(sql.SQL("waiting"))
+        elif filters.status is ConversationStatus.ANSWERED:
+            conditions.append(sql.SQL("NOT waiting"))
+        if filters.channel is not None:
+            conditions.append(sql.SQL("channel = %s"))
+            params.append(filters.channel.value)
+        if filters.search:
+            conditions.append(sql.SQL("(display_name ILIKE %s OR username ILIKE %s)"))
+            pattern = _like_pattern(filters.search)
+            params += [pattern, pattern]
+        if after is not None:
+            if longest:
+                conditions.append(sql.SQL("(waiting_since, id) > (%s, %s)"))
+            else:
+                conditions.append(sql.SQL("(last_message_at, id) < (%s, %s)"))
+            params += [after[0], after[1]]
+        order = sql.SQL("waiting_since ASC, id ASC" if longest else "last_message_at DESC, id DESC")
+        where = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("")
+        query = sql.Composed(
+            [
+                sql.SQL(_CONVERSATIONS_CTE + _CONVERSATION_COLUMNS),
+                where,
+                sql.SQL(" ORDER BY "),
+                order,
+                sql.SQL(" LIMIT %s"),
+            ]
+        )
+        params.append(limit)
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            return [_summary(row) for row in cur.fetchall()]
+
+    def get_conversation(self, conversation_id: int) -> ConversationDetail | None:
+        with self._conn.cursor() as cur:
+            cur.execute(_CONVERSATION_BY_ID, (conversation_id,))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            cur.execute("SELECT count(*) FROM messages WHERE conversation_id = %s", (conversation_id,))
+            message_count: int = _one(cur)[0]
+        return ConversationDetail(summary=_summary(row), created_at=row[-1], message_count=message_count)
+
+    def list_messages(self, conversation_id: int, limit: int, before: Keyset | None) -> list[StoredMessage]:
+        params: list[Any] = [conversation_id]
+        keyset: sql.Composable = sql.SQL("")
+        if before is not None:
+            keyset = _MESSAGES_KEYSET
+            params += [before[0], before[1]]
+        params.append(limit)
+        with self._conn.cursor() as cur:
+            cur.execute(_MESSAGES_PAGE.format(keyset=keyset), params)
+            return [
+                StoredMessage(
+                    id=i,
+                    conversation_id=c,
+                    direction=Direction(d),
+                    kind=MessageKind(k),
+                    body=b,
+                    has_media=m,
+                    sent_at=t,
+                )
+                for i, c, d, k, b, m, t in cur.fetchall()
+            ]
+
+    # ---------- HealthCheck ----------
+
+    def ping(self) -> None:
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        except psycopg.Error as exc:
+            raise StorageUnavailable("The database is not reachable.") from exc
+
     # ---------- RejectStore (dead letter) ----------
 
     def save_rejects(self, source: str, rejects: list[Reject]) -> int:
@@ -241,4 +422,13 @@ class PostgresStore:
             contacts, conversations, messages = _one(cur)
             cur.execute("SELECT kind, count(*) FROM messages GROUP BY kind ORDER BY 2 DESC")
             by_kind = {MessageKind(kind): count for kind, count in cur.fetchall()}
-        return InboxStats(contacts=contacts, conversations=conversations, messages=messages, by_kind=by_kind)
+            cur.execute(_WAITING_STATS)
+            waiting, oldest = _one(cur)
+        return InboxStats(
+            contacts=contacts,
+            conversations=conversations,
+            messages=messages,
+            by_kind=by_kind,
+            waiting=waiting,
+            oldest_waiting_since=oldest,
+        )
