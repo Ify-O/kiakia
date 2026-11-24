@@ -191,6 +191,6 @@ class PostgresStore:
             )
             contacts, conversations, messages = _one(cur)
             cur.execute("SELECT kind, count(*) FROM messages GROUP BY kind ORDER BY 2 DESC")
-            by_kind = dict(cur.fetchall())
+            by_kind: dict[str, int] = dict(cur.fetchall())
         return {"contacts": contacts, "conversations": conversations, "messages": messages,
                 "by_kind": by_kind}

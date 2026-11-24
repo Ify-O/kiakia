@@ -45,7 +45,7 @@ class RetryPolicy:
     jitter: float = 0.5            # +/- 50% randomness so retries don't all line up
 
     def delay(self, attempt: int, rng: Callable[[], float] = random.random) -> float:
-        raw = min(self.max_delay, self.base_delay * (2 ** attempt))
+        raw = min(self.max_delay, self.base_delay * float(2**attempt))
         return raw * (1 - self.jitter + 2 * self.jitter * rng())
 
 
@@ -53,7 +53,7 @@ class ResilientHttpClient:
     def __init__(
         self,
         *,
-        timeout: tuple = (5.0, 30.0),             # (connect, read) seconds
+        timeout: tuple[float, float] = (5.0, 30.0),             # (connect, read) seconds
         retry: RetryPolicy | None = None,
         min_interval: float = 1.0,                # at most ~1 request per second
         retry_after_reader: RetryAfterReader = header_retry_after,

@@ -13,7 +13,7 @@ know the ports. Swapping Telegram for Meta later means changing wiring here.
 import argparse
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
@@ -29,7 +29,7 @@ def _store(settings: Settings) -> PostgresStore:
                                  settings.db_password, settings.db_name))
 
 
-def cmd_import(args) -> None:
+def cmd_import(args: argparse.Namespace) -> None:
     settings = load_settings()
     store = _store(settings)
     source = TelegramSource(TelegramClient(settings.telegram_bot_token))
@@ -39,7 +39,7 @@ def cmd_import(args) -> None:
           f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad.")
 
 
-def _ago(delta) -> str:
+def _ago(delta: timedelta) -> str:
     minutes = int(delta.total_seconds() // 60)
     if minutes < 60:
         return f"{minutes} min"
@@ -49,7 +49,7 @@ def _ago(delta) -> str:
     return f"{hours // 24} days"
 
 
-def cmd_waiting(args) -> None:
+def cmd_waiting(args: argparse.Namespace) -> None:
     settings = load_settings(require_telegram=False)
     store = _store(settings)
     waiting = ListWaitingCustomers(store).run()
@@ -65,14 +65,14 @@ def cmd_waiting(args) -> None:
               f"  (since {local:%d %b %H:%M})  \"{preview}\"")
 
 
-def cmd_stats(args) -> None:
+def cmd_stats(args: argparse.Namespace) -> None:
     c = _store(load_settings(require_telegram=False)).counts()
     print(f"Contacts: {c['contacts']}   Conversations: {c['conversations']}   Messages: {c['messages']}")
     for kind, n in c["by_kind"].items():
         print(f"  {kind:9} {n}")
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="kiakia", description="Kiakia: every customer, answered fast.")
     parser.add_argument("-v", "--verbose", action="store_true", help="show debug logs")
     sub = parser.add_subparsers(dest="command", required=True)
