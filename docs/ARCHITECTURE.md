@@ -337,7 +337,7 @@ flowchart LR
 | **Error translation** | `requests`/`psycopg` errors become Kiakia errors at the edge; the CLI shows clean messages |
 | **Bad data** | The parser never crashes on one bad record; rejects are counted per run |
 | **Schema versioning** | Alembic migrations; CI runs them up → down → up |
-| **Testing** | 33 tests: unit (no network/DB, using fakes) + integration (real Postgres built by migrations) |
+| **Testing** | 45 tests: unit (no network/DB, using fakes) + integration (real Postgres built by migrations) |
 | **Tooling** | uv lockfile, ruff (incl. security rules), strict mypy, CI on every PR |
 | **Secrets** | `.env` git-ignored; token never in logs or errors; `Settings.__repr__` hides it |
 | **Time** | Aware datetimes enforced by the domain; stored in UTC, shown in Africa/Lagos time |
@@ -349,6 +349,7 @@ Each item says how I **proved** it, where it is, and how to fix it. Ordered by p
 ### 🔴 High priority
 
 **W1. A database error can hide the real error.**
+> ✅ **Fixed in Sprint 1:** the failure log is wrapped in its own try/except, and the original error is always re-raised. Test: `test_original_error_survives_when_logging_the_failure_also_fails`.
 [kiakia/application/import_messages.py:70-79](../kiakia/application/import_messages.py)
 If the database goes down while saving, the `except` block tries to write `finish_run(... "failed")`
 to that same database, which fails too. The user then sees the *second* error and the real cause is lost.
@@ -357,6 +358,7 @@ to that same database, which fails too. The user then sees the *second* error an
 original is always what's re-raised.
 
 **W2. A server can make Kiakia sleep for an hour.**
+> ✅ **Fixed in Sprint 1:** a hint above `max_delay` raises `RateLimited(retry_after=…)` immediately instead of sleeping. Test: `test_huge_retry_after_is_not_obeyed_blindly`.
 [kiakia/infrastructure/http.py:110](../kiakia/infrastructure/http.py)
 The server's "retry after" hint is used as-is. `RetryPolicy.max_delay = 30` doesn't apply to it.
 *Proof:* a `Retry-After: 3600` response made the client sleep 3600 seconds.
@@ -364,6 +366,7 @@ The server's "retry after" hint is used as-is. `RetryPolicy.max_delay = 30` does
 `RateLimited(retry_after=hint)` instead of blocking.
 
 **W3. The database is reachable from your whole network.**
+> ✅ **Fixed in Sprint 1:** Compose publishes `127.0.0.1:55432` only; the local container was recreated the same way, with the same data.
 [docker-compose.yml:10](../docker-compose.yml)
 `"55432:5432"` binds to `0.0.0.0`, so anyone on the same Wi-Fi (café, office) can try to log in.
 *Proof:* `docker port kiakia-db` shows `0.0.0.0:55432`.
@@ -385,12 +388,14 @@ the same transaction as the good messages.
 ### 🟡 Medium priority
 
 **W6. A password with special characters breaks migrations.**
+> ✅ **Fixed in Sprint 1:** the URL is built with `sqlalchemy.URL.create`. Test: `test_password_with_special_characters_survives_the_url`.
 [kiakia/config.py:28-33](../kiakia/config.py)
 The DB URL is built by gluing strings together, so `@` or `/` in the password corrupts it.
 *Proof:* with password `p@ss/word`, the URL parser read the host as `ss` and the password as `p`.
 *Fix:* build it with `sqlalchemy.URL.create(...)`, which escapes every part safely.
 
 **W7. A wrong setting shows a raw Python crash.**
+> ✅ **Fixed in Sprint 1:** settings are validated by **pydantic-settings**; all problems are reported at once, without echoing values, and secrets are `SecretStr`. 9 tests in `tests/unit/test_config.py`.
 [kiakia/config.py:60](../kiakia/config.py)
 `int(os.getenv("POSTGRES_PORT"))` throws a plain `ValueError` that skips the friendly `ConfigError` path.
 *Proof:* `POSTGRES_PORT=abc` printed `ValueError: invalid literal for int()` with a stack trace.
@@ -436,12 +441,12 @@ together". That gives exactly-once delivery inside the DB.
 | # | Weakness | Where | Fix |
 |---|---|---|---|
 | W13 | Run status is a free string (`"failed"`) | `ports.py`, `import_messages.py` | `RunStatus` StrEnum (avoid "stringly typed" code) |
-| W14 | `update_id: true` (a boolean) is accepted as `1` (proven) | [parser.py:122](../kiakia/adapters/telegram/parser.py) | `type(update_id) is int` |
+| W14 ✅ | ~~`update_id: true` (a boolean) is accepted as `1`~~ **Fixed** with a `TypeGuard` helper `_is_int` | [parser.py:122](../kiakia/adapters/telegram/parser.py) | `type(update_id) is int` |
 | W15 | `channel` column has no CHECK, while `direction` and `kind` do | migration 0001 | Add it in migration `0002` |
 | W16 | Foreign keys without indexes (`contact_identities.contact_id`, `conversations.contact_id`) | migration 0001 | Indexes in `0002` |
 | W17 | 4–6 SQL statements per message (N+1 pattern) | `repository.py:76` | Batch with `executemany` when volumes grow |
 | W18 | Plain-text logs, no metrics | everywhere | Structured JSON logs + counters (later: OpenTelemetry) |
-| W19 | No tests for `TelegramSource`, `config.py` or `cli.py` | `tests/` | Add them; measure coverage with `pytest-cov` |
+| W19 | No tests for `TelegramSource` or `cli.py` (config tests ✅ added in Sprint 1) | `tests/` | Add them; measure coverage with `pytest-cov` |
 | W20 | Sync `requests`, while FastAPI is async | `http.py` | Consider `httpx` when the API arrives |
 
 ## B3. Security review 🔐
@@ -463,7 +468,7 @@ together". That gives exactly-once delivery inside the DB.
 
 ```mermaid
 flowchart LR
-    subgraph S1["Sprint 1: quick safety fixes (½ day)"]
+    subgraph S1["✅ Sprint 1: quick safety fixes (DONE)"]
         A1["W3 bind DB to localhost"]
         A2["W2 cap retry-after"]
         A3["W1 keep the original error"]

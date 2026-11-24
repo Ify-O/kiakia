@@ -86,7 +86,7 @@ Run the import as often as you like: a second run never creates duplicates.
 uv run ruff check .        # lint (incl. security rules)
 uv run ruff format .       # format
 uv run mypy                # strict type checking
-uv run pytest              # 33 unit + integration tests
+uv run pytest              # 45 unit + integration tests
 ```
 
 The same checks run automatically on GitHub for every push and pull request
@@ -128,5 +128,7 @@ The same checks run automatically on GitHub for every push and pull request
 ### Security
 
 - The bot token and DB password live only in `.env` (git-ignored). `.env.example` has placeholders.
+- Settings are validated at startup (pydantic-settings); secrets are `SecretStr`, masked in logs and errors.
+- The database only accepts connections from this machine (`127.0.0.1`).
 - The token is part of Telegram's URL, so URLs are never logged or shown in errors.
 - All SQL is parameterised. Test fixtures contain fake data only.
