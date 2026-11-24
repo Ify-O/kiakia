@@ -7,7 +7,7 @@ import psycopg
 import pytest
 
 from kiakia.adapters.postgres.repository import PostgresStore
-from kiakia.domain.models import Channel, Direction, Message, MessageKind, Sender
+from kiakia.domain.models import Channel, Direction, Message, MessageKind, RunStatus, Sender
 
 pytestmark = pytest.mark.integration
 
@@ -91,7 +91,7 @@ def test_cursor_round_trip(conn):
 def test_import_run_log(conn):
     store = PostgresStore(conn)
     run_id = store.start_run("telegram")
-    store.finish_run(run_id, status="succeeded", seen=8, saved=5, bad=1)
+    store.finish_run(run_id, status=RunStatus.SUCCEEDED, seen=8, saved=5, bad=1)
     with conn.cursor() as cur:
         cur.execute(
             "SELECT status, records_seen, records_saved, records_bad, finished_at IS NOT NULL "

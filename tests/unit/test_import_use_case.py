@@ -9,7 +9,16 @@ import pytest
 
 from kiakia.application.import_messages import ImportMessages
 from kiakia.domain.errors import SourceUnavailable
-from kiakia.domain.models import Channel, Direction, FetchResult, Message, MessageKind, Reject, Sender
+from kiakia.domain.models import (
+    Channel,
+    Direction,
+    FetchResult,
+    Message,
+    MessageKind,
+    Reject,
+    RunStatus,
+    Sender,
+)
 
 
 def message(i):
@@ -80,7 +89,7 @@ def test_imports_all_batches_and_moves_cursor():
     assert (s.saved, s.bad, s.ignored, s.seen, s.batches) == (3, 1, 1, 5, 2)
     assert source.cursors_seen == [None, "3", "6"]  # continues where it stopped
     assert store.cursor == "6"
-    assert store.runs[0]["status"] == "succeeded"
+    assert store.runs[0]["status"] is RunStatus.SUCCEEDED
 
 
 def test_cursor_is_not_moved_when_saving_fails():
@@ -89,7 +98,7 @@ def test_cursor_is_not_moved_when_saving_fails():
     with pytest.raises(RuntimeError):
         use_case(source, store).run()
     assert store.cursor is None  # messages will be fetched again next time
-    assert store.runs[0]["status"] == "failed"
+    assert store.runs[0]["status"] is RunStatus.FAILED
 
 
 def test_source_failure_is_logged_as_failed_run():
@@ -100,7 +109,7 @@ def test_source_failure_is_logged_as_failed_run():
     store = FakeStore()
     with pytest.raises(SourceUnavailable):
         use_case(DownSource([]), store).run()
-    assert store.runs[0]["status"] == "failed"
+    assert store.runs[0]["status"] is RunStatus.FAILED
     assert "timed out" in store.runs[0]["error"]
 
 

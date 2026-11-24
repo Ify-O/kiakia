@@ -14,6 +14,7 @@ the idempotent save ignores the duplicates. Nothing is lost, nothing is doubled.
 import logging
 from dataclasses import dataclass
 
+from kiakia.domain.models import RunStatus
 from kiakia.domain.ports import CursorStore, ImportRunLog, MessageRepository, MessageSource
 
 log = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class ImportMessages:
             try:
                 self.runs.finish_run(
                     run_id,
-                    status="failed",
+                    status=RunStatus.FAILED,
                     seen=summary.seen,
                     saved=summary.saved,
                     bad=summary.bad,
@@ -83,6 +84,6 @@ class ImportMessages:
                 log.error("Could not record failed run %s: %s", run_id, log_exc)
             raise
         self.runs.finish_run(
-            run_id, status="succeeded", seen=summary.seen, saved=summary.saved, bad=summary.bad
+            run_id, status=RunStatus.SUCCEEDED, seen=summary.seen, saved=summary.saved, bad=summary.bad
         )
         return summary

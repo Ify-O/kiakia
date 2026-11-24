@@ -23,6 +23,14 @@ class Direction(StrEnum):
     OUT = "out"  # from the business
 
 
+class RunStatus(StrEnum):
+    """Outcome of one import run (matches the CHECK constraint on import_runs.status)."""
+
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class MessageKind(StrEnum):
     TEXT = "text"
     VOICE = "voice"

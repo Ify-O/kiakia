@@ -14,7 +14,7 @@ from typing import Any
 import psycopg
 
 from kiakia.domain.errors import StorageUnavailable
-from kiakia.domain.models import Channel, Direction, Message, WaitingCustomer
+from kiakia.domain.models import Channel, Direction, Message, RunStatus, WaitingCustomer
 
 
 def connect(host: str, port: int, user: str, password: str, dbname: str) -> psycopg.Connection:
@@ -183,14 +183,14 @@ class PostgresStore:
             return run_id
 
     def finish_run(
-        self, run_id: int, *, status: str, seen: int, saved: int, bad: int, error: str | None = None
+        self, run_id: int, *, status: RunStatus, seen: int, saved: int, bad: int, error: str | None = None
     ) -> None:
         with self._conn.cursor() as cur:
             cur.execute(
                 """UPDATE import_runs SET finished_at = now(), status = %s, records_seen = %s,
                           records_saved = %s, records_bad = %s, error = %s
                    WHERE id = %s""",
-                (status, seen, saved, bad, error, run_id),
+                (status.value, seen, saved, bad, error, run_id),
             )
 
     # ---------- small read helpers for the CLI ----------
