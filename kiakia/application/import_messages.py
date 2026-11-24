@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ImportSummary:
+    source: str = ""
     batches: int = 0
     seen: int = 0  # updates received (messages + ignored + rejected)
     saved: int = 0
@@ -45,7 +46,7 @@ class ImportMessages:
         self.batch_size = batch_size
 
     def run(self, max_records: int | None = None, max_batches: int = 1000) -> ImportSummary:
-        summary = ImportSummary()
+        summary = ImportSummary(source=self.source.name)
         run_id = self.runs.start_run(self.source.name)
         try:
             while summary.batches < max_batches:
