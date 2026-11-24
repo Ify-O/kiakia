@@ -35,3 +35,25 @@ class NotFound(KiakiaError):
 
 class InvalidCursor(KiakiaError):
     """A pagination cursor is malformed, tampered with, or from a different list."""
+
+
+class InvalidInput(KiakiaError):
+    """A field of the request is invalid in a way only the domain can tell (-> 422)."""
+
+    def __init__(self, field: str, message: str):
+        super().__init__(f"{field}: {message}")
+        self.field = field
+        self.message = message
+
+
+class IdempotencyConflict(KiakiaError):
+    """The Idempotency-Key was used for a different request, or is still in progress (-> 409)."""
+
+
+class ChannelNotSupported(SourceRejectedRequest):
+    """Kiakia can't send messages on this conversation's channel yet (-> 502)."""
+
+
+class DeliveryUnknown(KiakiaError):
+    """We sent the message but couldn't confirm delivery (e.g. timed out waiting for the answer).
+    It may have reached the customer, so it must NOT be retried automatically (-> 502)."""

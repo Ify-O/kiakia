@@ -28,6 +28,18 @@ customer. That's embarrassing for a business.
   first attempt may already have been delivered. They are retried only when the request provably
   never arrived (connection refused) or on 429.
 
+### Failure handling (added during implementation)
+| What happened | Was it sent? | Key | API answer |
+|---|---|---|---|
+| Channel refused (e.g. bot blocked), rate limited, couldn't connect, unsupported channel | **No** | released, so the same key can be retried | 502 `channel-error` / 503 |
+| Timeout after sending, broken connection, channel 5xx, unreadable answer (`DeliveryUnknown`) | **Maybe** | **kept locked**, so a retry gets 409, never a possible duplicate | 502 `delivery-unknown`: "check the chat before sending again" |
+| Sent, but storing it failed | Yes | kept locked (409 on retry) | 503; known gap: the reply is missing from our DB |
+
+- Whitespace-only text is rejected by the contract itself (`pattern: "\\S"`), so the schema and the
+  server agree (the domain checks it again as a safety net).
+- The key hash covers the conversation **and** the trimmed text, so the same key on another
+  conversation is also a 409.
+
 ## Consequences
 - ✅ Safe retries for clients, mobile networks and double clicks.
 - ✅ Teaches and applies a core industry pattern (Stripe-style idempotency keys).

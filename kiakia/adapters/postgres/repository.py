@@ -1,7 +1,7 @@
 """PostgreSQL adapter: the ONLY place in Kiakia that reads or writes the database.
 
 Implements the MessageRepository, RejectStore, CursorStore, ImportRunLog, StatsQuery,
-ConversationQuery and HealthCheck ports.
+ConversationQuery, HealthCheck, ReplyStore and IdempotencyStore ports.
 Uses psycopg 3, the current PostgreSQL driver for Python.
 
 - All SQL is parameterised (%s placeholders), never built from strings.
@@ -11,6 +11,7 @@ Uses psycopg 3, the current PostgreSQL driver for Python.
 """
 
 import json
+from datetime import datetime
 from typing import Any
 
 import psycopg
@@ -20,12 +21,14 @@ from psycopg.types.json import Jsonb
 from kiakia.domain.errors import StorageUnavailable
 from kiakia.domain.models import (
     Channel,
+    ClaimOutcome,
     ConversationDetail,
     ConversationFilter,
     ConversationSort,
     ConversationStatus,
     ConversationSummary,
     Direction,
+    IdempotencyClaim,
     InboxStats,
     Message,
     MessageKind,
@@ -90,7 +93,7 @@ _WAITING_SQL = """
 # "waiting" = there are customer messages after the business's last reply.
 _CONVERSATIONS_CTE = """
 WITH conv AS (
-    SELECT cv.id, cv.channel, cv.created_at,
+    SELECT cv.id, cv.channel, cv.external_chat_id, cv.created_at,
            ct.id AS contact_id, ct.display_name, ident.username,
            GREATEST(cv.last_inbound_at, cv.last_outbound_at) AS last_message_at,
            cv.last_outbound_at,
@@ -121,7 +124,7 @@ WITH conv AS (
 """
 
 _CONVERSATION_COLUMNS = """
-SELECT id, channel, contact_id, display_name, username, waiting, waiting_since,
+SELECT id, channel, external_chat_id, contact_id, display_name, username, waiting, waiting_since,
        last_message_at, last_outbound_at, preview, unanswered_count, created_at
 FROM conv
 """
@@ -140,6 +143,28 @@ _MESSAGES_PAGE = sql.SQL(
 _MESSAGES_KEYSET = sql.SQL(" AND (sent_at, id) < (%s, %s)")
 
 
+_STORED_MESSAGE_COLUMNS = sql.SQL(
+    "id, conversation_id, direction, kind, body, media_ref IS NOT NULL, sent_at"
+)
+_MESSAGE_BY_ID = sql.SQL("SELECT {cols} FROM messages WHERE id = %s").format(cols=_STORED_MESSAGE_COLUMNS)
+_INSERT_REPLY = sql.SQL(
+    """INSERT INTO messages (conversation_id, channel, external_chat_id, external_message_id,
+                             direction, kind, body, sent_at)
+       VALUES (%s, %s, %s, %s, 'out', 'text', %s, %s)
+       ON CONFLICT (channel, external_chat_id, external_message_id)
+       DO UPDATE SET body = EXCLUDED.body
+       RETURNING {cols}"""
+).format(cols=_STORED_MESSAGE_COLUMNS)
+IDEMPOTENCY_TTL = "24 hours"
+
+
+def _stored(row: tuple[Any, ...]) -> StoredMessage:
+    i, c, d, k, b, m, t = row
+    return StoredMessage(
+        id=i, conversation_id=c, direction=Direction(d), kind=MessageKind(k), body=b, has_media=m, sent_at=t
+    )
+
+
 def _like_pattern(text: str) -> str:
     """Search text as a LIKE pattern, with LIKE's own wildcards escaped (so '100%' is literal)."""
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -150,6 +175,7 @@ def _summary(row: tuple[Any, ...]) -> ConversationSummary:
     (
         cid,
         channel,
+        external_chat_id,
         contact_id,
         name,
         username,
@@ -164,6 +190,7 @@ def _summary(row: tuple[Any, ...]) -> ConversationSummary:
     return ConversationSummary(
         id=cid,
         channel=Channel(channel),
+        external_chat_id=external_chat_id,
         contact_id=contact_id,
         contact_name=name,
         contact_username=username,
@@ -333,18 +360,77 @@ class PostgresStore:
         params.append(limit)
         with self._conn.cursor() as cur:
             cur.execute(_MESSAGES_PAGE.format(keyset=keyset), params)
-            return [
-                StoredMessage(
-                    id=i,
-                    conversation_id=c,
-                    direction=Direction(d),
-                    kind=MessageKind(k),
-                    body=b,
-                    has_media=m,
-                    sent_at=t,
-                )
-                for i, c, d, k, b, m, t in cur.fetchall()
-            ]
+            return [_stored(row) for row in cur.fetchall()]
+
+    # ---------- ReplyStore ----------
+
+    def record_reply(
+        self, conversation_id: int, external_message_id: str, text: str, sent_at: datetime
+    ) -> StoredMessage:
+        """Store an outgoing reply and mark the conversation as answered, in one transaction."""
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT channel, external_chat_id FROM conversations WHERE id = %s", (conversation_id,)
+            )
+            channel, chat_id = _one(cur)
+            cur.execute(
+                _INSERT_REPLY, (conversation_id, channel, chat_id, external_message_id, text, sent_at)
+            )
+            stored = _stored(_one(cur))
+            cur.execute(_TOUCH_OUTBOUND, (sent_at, conversation_id))
+        return stored
+
+    def get_message(self, message_id: int) -> StoredMessage | None:
+        with self._conn.cursor() as cur:
+            cur.execute(_MESSAGE_BY_ID, (message_id,))
+            row = cur.fetchone()
+        return _stored(row) if row else None
+
+    # ---------- IdempotencyStore ----------
+
+    def claim(self, scope: str, key: str, request_hash: str) -> IdempotencyClaim:
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            # An expired key is forgotten, so it can be used again.
+            cur.execute(
+                "DELETE FROM idempotency_keys WHERE scope = %s AND key = %s "
+                "AND created_at < now() - %s::interval",
+                (scope, key, IDEMPOTENCY_TTL),
+            )
+            # Atomic "first one wins": a concurrent identical claim waits on the primary key.
+            cur.execute(
+                """INSERT INTO idempotency_keys (scope, key, request_hash, status)
+                   VALUES (%s, %s, %s, 'in_progress')
+                   ON CONFLICT (scope, key) DO NOTHING
+                   RETURNING key""",
+                (scope, key, request_hash),
+            )
+            if cur.fetchone() is not None:
+                return IdempotencyClaim(ClaimOutcome.NEW)
+            cur.execute(
+                "SELECT request_hash, status, message_id FROM idempotency_keys WHERE scope = %s AND key = %s",
+                (scope, key),
+            )
+            stored_hash, status, message_id = _one(cur)
+        if stored_hash != request_hash:
+            return IdempotencyClaim(ClaimOutcome.MISMATCH)
+        if status == "in_progress":
+            return IdempotencyClaim(ClaimOutcome.IN_PROGRESS)
+        return IdempotencyClaim(ClaimOutcome.REPLAY, message_id=message_id)
+
+    def complete(self, scope: str, key: str, message_id: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """UPDATE idempotency_keys SET status = 'completed', message_id = %s, completed_at = now()
+                   WHERE scope = %s AND key = %s""",
+                (message_id, scope, key),
+            )
+
+    def release(self, scope: str, key: str) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM idempotency_keys WHERE scope = %s AND key = %s AND status = 'in_progress'",
+                (scope, key),
+            )
 
     # ---------- HealthCheck ----------
 

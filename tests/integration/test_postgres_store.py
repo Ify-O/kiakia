@@ -153,3 +153,60 @@ def test_rejects_are_kept_with_their_raw_json_and_not_duplicated(conn):
         rows = cur.fetchall()
     assert rows[0] == ("500007", "missing message.date", {"update_id": 500007, "message": {"text": "hi"}})
     assert rows[1][2] == "garbage"
+
+
+# ---------- replies + idempotency keys ----------
+
+
+def _conversation_id(conn, chat):
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM conversations WHERE external_chat_id = %s", (chat,))
+        return cur.fetchone()[0]
+
+
+def test_reply_is_stored_as_outgoing_and_ends_the_wait(conn):
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA, "price?")])
+    cid = _conversation_id(conn, "9001")
+    assert [w.contact_name for w in store.waiting_customers()] == ["Ada Test"]
+
+    stored = store.record_reply(cid, "500", "₦15,000", T0 + timedelta(minutes=5))
+    assert stored.direction is Direction.OUT and stored.body == "₦15,000"
+    assert store.get_message(stored.id) == stored
+    assert store.waiting_customers() == []  # answered: no longer waiting
+    assert count(conn, "contacts") == 1  # the business didn't become a "contact"
+
+
+def test_idempotency_claim_lifecycle(conn):
+    from kiakia.domain.models import ClaimOutcome
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA)])
+    reply = store.record_reply(_conversation_id(conn, "9001"), "500", "hi", T0)
+
+    assert store.claim("replies", "k1", "hash-a").outcome is ClaimOutcome.NEW
+    assert store.claim("replies", "k1", "hash-a").outcome is ClaimOutcome.IN_PROGRESS
+    assert store.claim("replies", "k1", "hash-b").outcome is ClaimOutcome.MISMATCH
+    store.complete("replies", "k1", reply.id)
+    replay = store.claim("replies", "k1", "hash-a")
+    assert replay.outcome is ClaimOutcome.REPLAY and replay.message_id == reply.id
+    assert store.claim("other-scope", "k1", "hash-a").outcome is ClaimOutcome.NEW  # keys are per scope
+
+
+def test_released_key_can_be_claimed_again(conn):
+    from kiakia.domain.models import ClaimOutcome
+
+    store = PostgresStore(conn)
+    store.claim("replies", "k2", "h")
+    store.release("replies", "k2")
+    assert store.claim("replies", "k2", "h").outcome is ClaimOutcome.NEW
+
+
+def test_expired_key_can_be_reused(conn):
+    from kiakia.domain.models import ClaimOutcome
+
+    store = PostgresStore(conn)
+    store.claim("replies", "k3", "old-request")
+    with conn.cursor() as cur:
+        cur.execute("UPDATE idempotency_keys SET created_at = now() - interval '25 hours' WHERE key = 'k3'")
+    assert store.claim("replies", "k3", "new-request").outcome is ClaimOutcome.NEW

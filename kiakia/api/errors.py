@@ -16,7 +16,10 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from kiakia.domain.errors import (
+    DeliveryUnknown,
+    IdempotencyConflict,
     InvalidCursor,
+    InvalidInput,
     NotFound,
     RateLimited,
     SourceRejectedRequest,
@@ -31,6 +34,17 @@ PROBLEM_JSON = "application/problem+json"
 
 # Pretty names for inputs, as clients know them (the contract's names).
 _FIELD_NAMES = {"idempotency-key": "Idempotency-Key"}
+
+# Plain-language messages for errors a UI shows under a form field. Other errors keep
+# pydantic's message, which is already readable ("Input should be less than or equal to 100").
+_FRIENDLY = {
+    ("text", "string_pattern_mismatch"): "must not be empty or only spaces",
+    ("text", "string_too_short"): "must not be empty",
+    ("text", "string_too_long"): "must be at most 4096 characters",
+    ("text", "missing"): "is required",
+    ("Idempotency-Key", "missing"): "is required (send a unique value per reply, e.g. a UUID)",
+    ("Idempotency-Key", "string_pattern_mismatch"): "may only contain letters, digits, '-' and '_'",
+}
 
 
 def problem(
@@ -66,9 +80,9 @@ def _field_errors(exc: RequestValidationError) -> tuple[list[dict[str, str]], bo
         is_body_field = len(loc) >= 2 and loc[0] == "body" and err.get("type") != "json_invalid"
         body_fields_only = body_fields_only and is_body_field
         field = loc[-1] if len(loc) >= 2 else (loc[0] if loc else "request")
-        errors.append(
-            {"field": _FIELD_NAMES.get(field.lower(), field), "message": str(err.get("msg", "is invalid"))}
-        )
+        name = _FIELD_NAMES.get(field.lower(), field)
+        message = _FRIENDLY.get((name, str(err.get("type"))), str(err.get("msg", "is invalid")))
+        errors.append({"field": name, "message": message})
     return errors, body_fields_only
 
 
@@ -90,6 +104,31 @@ def install_error_handlers(app: FastAPI) -> None:
             "The request is malformed",
             "1 parameter is invalid.",
             [{"field": "cursor", "message": str(exc)}],
+        )
+
+    @app.exception_handler(InvalidInput)
+    async def on_invalid_input(request: Request, exc: InvalidInput) -> JSONResponse:
+        return problem(
+            request,
+            422,
+            "validation-error",
+            "Your request has invalid fields",
+            "1 field is invalid.",
+            [{"field": exc.field, "message": exc.message}],
+        )
+
+    @app.exception_handler(IdempotencyConflict)
+    async def on_idempotency_conflict(request: Request, exc: IdempotencyConflict) -> JSONResponse:
+        return problem(request, 409, "idempotency-key-reused", "Idempotency-Key conflict", str(exc))
+
+    @app.exception_handler(DeliveryUnknown)
+    async def on_delivery_unknown(request: Request, exc: DeliveryUnknown) -> JSONResponse:
+        return problem(
+            request,
+            502,
+            "delivery-unknown",
+            "We could not confirm the message was delivered",
+            f"{exc} Check the chat before sending again.",
         )
 
     @app.exception_handler(NotFound)

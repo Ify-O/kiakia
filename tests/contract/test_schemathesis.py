@@ -4,7 +4,7 @@ Schemathesis reads openapi.yaml (served by the app at /openapi.json, see api/app
 generates many requests, valid and invalid, for every operation. For each response it checks:
 no 5xx, status code / content type / headers / body all match the contract.
 
-The reply endpoint (POST) is excluded until it's implemented (next step of Assignment 2).
+All operations are covered, including POST /replies (sent to a fake channel, never to real people).
 """
 
 import pytest
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def api_schema(client):
-    return schemathesis.openapi.from_asgi("/openapi.json", client.app).exclude(operation_id="createReply")
+    return schemathesis.openapi.from_asgi("/openapi.json", client.app)
 
 
 schema = schemathesis.pytest.from_fixture("api_schema")

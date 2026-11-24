@@ -410,7 +410,8 @@ components:
           type: string
           minLength: 1
           maxLength: 4096
-          description: The reply. Leading and trailing spaces are removed; it must not be empty after that. Max 4096 characters (Telegram's limit).
+          pattern: "\\S"
+          description: The reply. Must contain at least one non-space character (`\\S`); leading and trailing spaces are removed. Max 4096 characters (Telegram's limit).
 
     PageInfo:
       type: object
@@ -564,7 +565,7 @@ components:
             detail: Conversation 999 does not exist.
             instance: /v1/conversations/999
     Conflict:
-      description: The `Idempotency-Key` was already used with a different request body.
+      description: The `Idempotency-Key` was already used with a different request body, or the first request with it is still being processed (or its delivery is unconfirmed).
       content:
         application/problem+json:
           schema:
@@ -591,7 +592,10 @@ components:
               - field: text
                 message: must not be empty
     BadGateway:
-      description: The channel (e.g. Telegram) refused or failed to deliver the message.
+      description: |
+        The channel (e.g. Telegram) refused the message (`channel-error`; nothing was sent), or we
+        couldn't confirm delivery (`delivery-unknown`; it may have arrived, so check the chat before
+        sending again with a NEW Idempotency-Key; retrying the same key returns 409 until it expires).
       content:
         application/problem+json:
           schema:

@@ -6,7 +6,7 @@ Contract tests check that what these produce validates against openapi.yaml.
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from kiakia.domain.models import (
@@ -145,6 +145,12 @@ class InboxStatsOut(ApiModel):
             oldest_waiting_since=_utc_or_none(s.oldest_waiting_since),
             messages_by_kind=s.by_kind,
         )
+
+
+class ReplyIn(ApiModel):
+    """Request body of POST /replies. Same rules as ReplyCreate in openapi.yaml."""
+
+    text: str = Field(min_length=1, max_length=4096, pattern=r"\S")  # \S: not only spaces
 
 
 class HealthOut(ApiModel):

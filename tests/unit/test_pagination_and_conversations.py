@@ -50,6 +50,7 @@ def summary(i, waiting=True):
     return ConversationSummary(
         id=i,
         channel=Channel.TELEGRAM,
+        external_chat_id=str(i),
         contact_id=i,
         contact_name=f"Customer {i}",
         contact_username=None,

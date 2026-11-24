@@ -140,6 +140,7 @@ class ConversationFilter:
 class ConversationSummary:
     id: int
     channel: Channel
+    external_chat_id: str  # the chat on the channel (needed to reply); internal, not in the API
     contact_id: int
     contact_name: str
     contact_username: str | None
@@ -177,3 +178,24 @@ class Page[T]:
 
     items: list[T]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class SentMessage:
+    """What a channel tells us after it accepted an outgoing message."""
+
+    external_message_id: str
+    sent_at: datetime
+
+
+class ClaimOutcome(StrEnum):
+    NEW = "new"  # first time we see this key: go ahead
+    REPLAY = "replay"  # same key + same request, already done: return the stored result
+    MISMATCH = "mismatch"  # same key, different request: refuse (409)
+    IN_PROGRESS = "in_progress"  # same key, first request still running: refuse (409)
+
+
+@dataclass(frozen=True)
+class IdempotencyClaim:
+    outcome: ClaimOutcome
+    message_id: int | None = None  # for REPLAY: the stored reply to return again

@@ -8,17 +8,18 @@ Run locally:
     uv run uvicorn kiakia.api.app:create_app_from_env --factory --reload
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path as FilePath
 from typing import Annotated, Any, Literal
 
 import yaml
-from fastapi import Depends, FastAPI, Path, Query
+from fastapi import Depends, FastAPI, Header, Path, Query, Response
 
 from kiakia.bootstrap import Services
 from kiakia.bootstrap import app as services_for
 from kiakia.config import Settings, load_settings
 from kiakia.domain.models import Channel, ConversationFilter, ConversationSort, ConversationStatus
+from kiakia.domain.ports import MessageSender
 
 from .errors import install_error_handlers
 from .schemas import (
@@ -26,7 +27,9 @@ from .schemas import (
     ConversationPageOut,
     HealthOut,
     InboxStatsOut,
+    MessageOut,
     MessagePageOut,
+    ReplyIn,
 )
 
 CONTRACT_PATH = FilePath(__file__).resolve().parents[2] / "openapi.yaml"
@@ -34,6 +37,9 @@ CONTRACT_PATH = FilePath(__file__).resolve().parents[2] / "openapi.yaml"
 ConversationId = Annotated[int, Path(alias="conversationId", ge=1, le=2**63 - 1)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(min_length=1, max_length=500)]
+IdempotencyKey = Annotated[
+    str, Header(alias="Idempotency-Key", min_length=8, max_length=255, pattern=r"^[A-Za-z0-9_-]+$")
+]
 
 
 def load_contract() -> dict[str, Any]:
@@ -42,7 +48,7 @@ def load_contract() -> dict[str, Any]:
     return contract
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | None = None) -> FastAPI:
     api = FastAPI(title="Kiakia API", version="1.0.0")
     contract = load_contract()
     api.openapi = lambda: contract  # type: ignore[method-assign]  # /docs shows OUR contract
@@ -51,7 +57,7 @@ def create_app(settings: Settings) -> FastAPI:
     def get_services() -> Iterator[Services]:
         # One DB connection per request, always closed afterwards (bootstrap.app).
         # A connection pool is the next step when traffic grows.
-        with services_for(settings) as services:
+        with services_for(settings, senders) as services:
             yield services
 
     ServicesDep = Annotated[Services, Depends(get_services)]
@@ -93,6 +99,24 @@ def create_app(settings: Settings) -> FastAPI:
     ) -> MessagePageOut:
         page = services.list_messages().run(conversation_id, limit, cursor)
         return MessagePageOut.from_domain(page, limit)
+
+    @api.post(
+        "/v1/conversations/{conversationId}/replies",
+        status_code=201,
+        response_model=MessageOut,
+        response_model_by_alias=True,
+    )
+    def create_reply(
+        services: ServicesDep,
+        conversation_id: ConversationId,
+        body: ReplyIn,
+        response: Response,
+        idempotency_key: IdempotencyKey,
+    ) -> MessageOut:
+        result = services.send_reply().run(conversation_id, body.text, idempotency_key)
+        response.headers["Location"] = f"/v1/conversations/{conversation_id}/messages"
+        response.headers["Idempotent-Replayed"] = "true" if result.replayed else "false"
+        return MessageOut.from_domain(result.message)
 
     @api.get("/v1/stats", response_model=InboxStatsOut, response_model_by_alias=True)
     def get_stats(services: ServicesDep) -> InboxStatsOut:

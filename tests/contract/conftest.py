@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from kiakia.adapters.postgres.repository import PostgresStore
 from kiakia.api.app import create_app
-from kiakia.domain.models import Channel, Direction, Message, MessageKind, Sender
+from kiakia.domain.models import Channel, Direction, Message, MessageKind, Sender, SentMessage
 from tests.conftest import TEST_DB
 
 NOW = datetime.now(UTC).replace(microsecond=0)
@@ -41,8 +41,28 @@ def seeded(conn):
     return conn
 
 
+class FakeSender:
+    """Stands in for Telegram: tests must never message real people."""
+
+    def __init__(self):
+        self.sent = []
+        self.error = None
+
+    def send_text(self, external_chat_id, text):
+        if self.error:
+            raise self.error
+        self.sent.append((external_chat_id, text))
+        return SentMessage(external_message_id=f"out-{len(self.sent)}", sent_at=datetime.now(UTC))
+
+
 @pytest.fixture
-def client(test_db_settings, seeded):
+def sender():
+    return FakeSender()
+
+
+@pytest.fixture
+def client(test_db_settings, seeded, sender):
     settings = test_db_settings.model_copy(update={"db_name": TEST_DB})
-    with TestClient(create_app(settings), raise_server_exceptions=False) as c:
+    app = create_app(settings, senders={Channel.TELEGRAM: sender})
+    with TestClient(app, raise_server_exceptions=False) as c:
         yield c

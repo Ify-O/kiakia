@@ -13,10 +13,12 @@ from .models import (
     ConversationFilter,
     ConversationSummary,
     FetchResult,
+    IdempotencyClaim,
     InboxStats,
     Message,
     Reject,
     RunStatus,
+    SentMessage,
     StoredMessage,
     WaitingCustomer,
 )
@@ -94,4 +96,37 @@ class ConversationQuery(Protocol):
 class HealthCheck(Protocol):
     def ping(self) -> None:
         """Raise StorageUnavailable if the storage can't be reached."""
+        ...
+
+
+class MessageSender(Protocol):
+    """Sends a text to a customer on one channel (Telegram now; WhatsApp, Meta later)."""
+
+    def send_text(self, external_chat_id: str, text: str) -> SentMessage:
+        """Must NOT retry when it can't tell whether the message was delivered (no duplicates)."""
+        ...
+
+
+class ReplyStore(Protocol):
+    def record_reply(
+        self, conversation_id: int, external_message_id: str, text: str, sent_at: datetime
+    ) -> StoredMessage:
+        """Store an outgoing reply; the conversation stops being 'waiting'."""
+        ...
+
+    def get_message(self, message_id: int) -> StoredMessage | None: ...
+
+
+class IdempotencyStore(Protocol):
+    """Remembers Idempotency-Keys (docs/adr/0004)."""
+
+    def claim(self, scope: str, key: str, request_hash: str) -> IdempotencyClaim:
+        """Atomically: NEW if unseen (or expired), REPLAY if done with the same request,
+        MISMATCH if used with a different request, IN_PROGRESS if still running."""
+        ...
+
+    def complete(self, scope: str, key: str, message_id: int) -> None: ...
+
+    def release(self, scope: str, key: str) -> None:
+        """Forget a key whose request failed before anything was sent, so it can be retried."""
         ...

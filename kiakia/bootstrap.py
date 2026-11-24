@@ -8,18 +8,22 @@ Connections are opened with `with app(settings) as services:` and are ALWAYS
 closed when the block ends, even if an error happens inside it.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
+from kiakia.adapters.telegram.sender import TelegramSender
 from kiakia.adapters.telegram.source import TelegramSource
 from kiakia.application.conversations import GetConversation, ListConversations, ListMessages
 from kiakia.application.import_messages import ImportMessages
+from kiakia.application.replies import SendReply
 from kiakia.application.stats import GetInboxStats
 from kiakia.application.waiting import ListWaitingCustomers
 from kiakia.config import ConfigError, Settings
+from kiakia.domain.models import Channel
+from kiakia.domain.ports import MessageSender
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,7 @@ class Services:
 
     store: PostgresStore
     settings: Settings
+    senders: Mapping[Channel, MessageSender] = field(default_factory=dict)
 
     def import_messages(self) -> ImportMessages:
         token = self.settings.telegram_bot_token.get_secret_value()
@@ -53,13 +58,26 @@ class Services:
     def list_messages(self) -> ListMessages:
         return ListMessages(self.store)
 
+    def send_reply(self) -> SendReply:
+        return SendReply(conversations=self.store, replies=self.store, keys=self.store, senders=self.senders)
+
     def check_health(self) -> None:
         """Raises StorageUnavailable if the database can't be reached."""
         self.store.ping()
 
 
+def default_senders(settings: Settings) -> dict[Channel, MessageSender]:
+    """One sender per channel Kiakia can reply on. Telegram needs its bot token."""
+    senders: dict[Channel, MessageSender] = {}
+    token = settings.telegram_bot_token.get_secret_value()
+    if token:
+        senders[Channel.TELEGRAM] = TelegramSender(TelegramClient(token))
+    return senders
+
+
 @contextmanager
-def app(settings: Settings) -> Iterator[Services]:
+def app(settings: Settings, senders: Mapping[Channel, MessageSender] | None = None) -> Iterator[Services]:
+    """`senders` can be replaced (e.g. by fakes in tests, so tests never message real customers)."""
     conn = connect(
         settings.db_host,
         settings.db_port,
@@ -68,6 +86,10 @@ def app(settings: Settings) -> Iterator[Services]:
         settings.db_name,
     )
     try:
-        yield Services(store=PostgresStore(conn), settings=settings)
+        yield Services(
+            store=PostgresStore(conn),
+            settings=settings,
+            senders=default_senders(settings) if senders is None else senders,
+        )
     finally:
         conn.close()  # W10: never leak a connection

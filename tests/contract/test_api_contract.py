@@ -39,6 +39,27 @@ def call(client, path, params=None):
     return response
 
 
+def post(client, path, body, key="key-" + "0" * 12, raw=None):
+    """POST through the API and validate the response against the contract."""
+    headers = {"Content-Type": "application/json"}
+    if key is not None:
+        headers["Idempotency-Key"] = key
+    data = raw if raw is not None else json.dumps(body)
+    response = client.post(path, content=data, headers=headers)
+    request = MockRequest(SERVER, "post", path, headers=headers, data=data.encode())
+    content_type = response.headers.get("content-type", "").split(";")[0]
+    CONTRACT.validate_response(
+        request,
+        MockResponse(
+            response.content,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            content_type=content_type,
+        ),
+    )
+    return response
+
+
 def names(response):
     return [c["contact"]["displayName"] for c in response.json()["data"]]
 
@@ -172,3 +193,110 @@ def test_problem_never_leaks_internals(client):
     r = client.get("/v1/conversations", params={"cursor": "' OR 1=1 --"})
     text = r.text.lower()
     assert r.status_code == 400 and "traceback" not in text and "select" not in text
+
+
+# ---------- POST /replies: validation, idempotency, channel errors ----------
+
+
+def waiting_id(client, name):
+    return call(client, "/v1/conversations", {"q": name}).json()["data"][0]["id"]
+
+
+def test_reply_is_sent_once_and_ends_the_wait(client, sender):
+    ada = waiting_id(client, "ada")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "  It's ₦15,000!  "})
+    assert r.status_code == 201
+    assert r.headers["Location"] == f"/v1/conversations/{ada}/messages"
+    assert r.headers["Idempotent-Replayed"] == "false"
+    assert r.json()["direction"] == "out" and r.json()["body"] == "It's ₦15,000!"
+    assert sender.sent == [("9001", "It's ₦15,000!")]
+    detail = call(client, f"/v1/conversations/{ada}").json()
+    assert detail["status"] == "answered" and detail["waitingSince"] is None
+
+
+def test_retry_with_same_key_is_replayed_not_resent(client, sender):
+    ada = waiting_id(client, "ada")
+    first = post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="retry-key-0001")
+    again = post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="retry-key-0001")
+    assert again.status_code == 201 and again.headers["Idempotent-Replayed"] == "true"
+    assert again.json() == first.json()
+    assert len(sender.sent) == 1  # the customer got it ONCE
+
+
+def test_same_key_with_different_text_is_409(client, sender):
+    ada = waiting_id(client, "ada")
+    post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="reused-key-001")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "Bye"}, key="reused-key-001")
+    assert r.status_code == 409 and r.json()["type"].endswith("/idempotency-key-reused")
+    assert len(sender.sent) == 1
+
+
+@pytest.mark.parametrize(
+    ("body", "field"),
+    [
+        ({"text": ""}, "text"),
+        ({"text": "   "}, "text"),
+        ({"text": "x" * 4097}, "text"),
+        ({}, "text"),
+        ({"text": "hi", "extra": 1}, "extra"),
+    ],
+)
+def test_invalid_body_is_422_with_field_errors(client, sender, body, field):
+    ada = waiting_id(client, "ada")
+    r = post(client, f"/v1/conversations/{ada}/replies", body)
+    assert r.status_code == 422 and field in [e["field"] for e in r.json()["errors"]]
+    assert sender.sent == []
+
+
+@pytest.mark.parametrize("key", [None, "short", "has spaces in it", "x" * 256])
+def test_missing_or_bad_idempotency_key_is_400(client, sender, key):
+    ada = waiting_id(client, "ada")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key=key)
+    assert r.status_code == 400 and "Idempotency-Key" in [e["field"] for e in r.json()["errors"]]
+    assert sender.sent == []
+
+
+def test_malformed_json_is_400(client):
+    ada = waiting_id(client, "ada")
+    assert post(client, f"/v1/conversations/{ada}/replies", None, raw="{not json").status_code == 400
+
+
+def test_reply_to_unknown_conversation_is_404(client):
+    assert post(client, "/v1/conversations/999999/replies", {"text": "Hello"}).status_code == 404
+
+
+def test_channel_refusal_is_502_and_the_key_can_be_retried(client, sender):
+    from kiakia.domain.errors import SourceRejectedRequest
+
+    ada = waiting_id(client, "ada")
+    sender.error = SourceRejectedRequest("telegram sendMessage: Forbidden: bot was blocked by the user")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="blocked-key-01")
+    assert r.status_code == 502 and "blocked" in r.json()["detail"]
+    sender.error = None
+    assert (
+        post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="blocked-key-01").status_code
+        == 201
+    )
+
+
+def test_unconfirmed_delivery_is_502_and_the_key_stays_locked(client, sender):
+    from kiakia.domain.errors import DeliveryUnknown
+
+    ada = waiting_id(client, "ada")
+    sender.error = DeliveryUnknown("telegram sendMessage: no answer in time; it may have been delivered")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="maybe-sent-key")
+    assert r.status_code == 502 and r.json()["type"].endswith("/delivery-unknown")
+    sender.error = None
+    assert (
+        post(client, f"/v1/conversations/{ada}/replies", {"text": "Hello"}, key="maybe-sent-key").status_code
+        == 409
+    )
+    assert sender.sent == []  # never sent twice
+
+
+def test_form_errors_are_in_plain_language(client):
+    ada = waiting_id(client, "ada")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "   "})
+    assert r.json()["errors"] == [{"field": "text", "message": "must not be empty or only spaces"}]
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "hi"}, key=None)
+    assert r.json()["errors"][0]["message"].startswith("is required")

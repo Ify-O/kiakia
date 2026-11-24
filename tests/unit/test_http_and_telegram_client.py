@@ -7,8 +7,8 @@ records the waits instead of actually waiting.
 import pytest
 import requests
 
-from kiakia.adapters.telegram.client import TelegramClient, telegram_retry_after
-from kiakia.domain.errors import RateLimited, SourceRejectedRequest, SourceUnavailable
+from kiakia.adapters.telegram.client import TelegramClient, telegram_error_detail, telegram_retry_after
+from kiakia.domain.errors import DeliveryUnknown, RateLimited, SourceRejectedRequest, SourceUnavailable
 from kiakia.infrastructure.http import ResilientHttpClient, RetryPolicy
 
 
@@ -139,3 +139,71 @@ def test_telegram_ok_false_is_rejected():
     http, _, _ = make_client([response(200, {"ok": False, "description": "Unauthorized"})])
     with pytest.raises(SourceRejectedRequest):
         TelegramClient("123:ABC", http=http).get_updates(offset=None)
+
+
+# ---------- POST for non-idempotent actions (sending messages) ----------
+
+
+class FakePostSession(FakeSession):
+    def post(self, url, json=None, timeout=None):
+        return self.get(url, params=json, timeout=timeout)
+
+
+def make_poster(outcomes):
+    sleeps = []
+    session = FakePostSession(outcomes)
+    http = ResilientHttpClient(
+        session=session,
+        sleep=sleeps.append,
+        clock=lambda: 0.0,
+        min_interval=0,
+        retry=RetryPolicy(jitter=0),
+        error_detail_reader=telegram_error_detail,
+    )
+    return http, session, sleeps
+
+
+def test_post_read_timeout_is_never_retried():
+    # The request may have reached Telegram: retrying could message the customer twice.
+    http, session, sleeps = make_poster([requests.ReadTimeout(), response(200, {"ok": True})])
+    with pytest.raises(DeliveryUnknown):
+        http.post_json_unsafe("https://example.test", json_body={})
+    assert len(session.calls) == 1 and sleeps == []
+
+
+def test_post_5xx_is_never_retried():
+    http, session, _ = make_poster([response(502), response(200, {})])
+    with pytest.raises(DeliveryUnknown):
+        http.post_json_unsafe("https://example.test", json_body={})
+    assert len(session.calls) == 1
+
+
+def test_post_connect_timeout_is_retried_because_nothing_was_sent():
+    http, session, sleeps = make_poster([requests.ConnectTimeout(), response(200, {"ok": True})])
+    assert http.post_json_unsafe("https://example.test", json_body={}) == {"ok": True}
+    assert len(session.calls) == 2 and sleeps == [1.0]
+
+
+def test_post_429_is_retried_with_the_server_hint():
+    http, _, sleeps = make_poster([response(429, headers={"Retry-After": "2"}), response(200, {"ok": True})])
+    http.post_json_unsafe("https://example.test", json_body={})
+    assert sleeps == [2.0]
+
+
+def test_post_refusal_shows_telegrams_reason():
+    http, _, _ = make_poster(
+        [response(403, {"ok": False, "description": "Forbidden: bot was blocked by the user"})]
+    )
+    with pytest.raises(SourceRejectedRequest, match="bot was blocked"):
+        http.post_json_unsafe("https://example.test", json_body={}, label="telegram sendMessage")
+
+
+def test_telegram_sender_returns_message_id_and_utc_time():
+    from kiakia.adapters.telegram.sender import TelegramSender
+
+    http, session, _ = make_poster(
+        [response(200, {"ok": True, "result": {"message_id": 77, "chat": {"id": 9001}, "date": 1795600000}})]
+    )
+    sent = TelegramSender(TelegramClient("123:ABC", http=http)).send_text("9001", "Hello")
+    assert sent.external_message_id == "77" and sent.sent_at.tzinfo is not None
+    assert session.calls[0]["params"] == {"chat_id": "9001", "text": "Hello"}

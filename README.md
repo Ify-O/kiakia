@@ -96,7 +96,7 @@ Then open <http://localhost:8000/docs> to browse and try the API (it shows `open
 | `GET /v1/conversations` | List with filters (`status`, `channel`, `q`, `sort`) and cursor pagination |
 | `GET /v1/conversations/{id}` | One conversation with details |
 | `GET /v1/conversations/{id}/messages` | Its messages, newest first, paginated |
-| `POST /v1/conversations/{id}/replies` | Reply to the customer (idempotent). *Contract ready, implementation next* |
+| `POST /v1/conversations/{id}/replies` | Reply to the customer through Telegram. **Idempotent**: send an `Idempotency-Key` header; retries never message the customer twice |
 | `GET /v1/stats` | Dashboard numbers |
 | `GET /health` | API + database health |
 
