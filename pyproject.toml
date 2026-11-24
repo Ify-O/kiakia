@@ -1,0 +1,22 @@
+[project]
+name = "kiakia"
+version = "0.1.0"
+description = "Every customer, answered fast: one inbox for chat-first small businesses."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "psycopg2-binary>=2.9.13",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
+    "sqlalchemy>=2.1.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs PostgreSQL running in Docker (docker compose up -d)"]

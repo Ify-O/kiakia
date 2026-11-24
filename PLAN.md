@@ -122,7 +122,7 @@ connector, and nothing else changes.
 
 | Part | Choice | Why |
 |---|---|---|
-| Language | Python 3.9+ | Our choice for the course |
+| Language | Python 3.12, managed with uv (pyproject.toml + uv.lock) | Our choice for the course; uv is fast and reproducible |
 | HTTP client | `requests` (or `httpx`) | Timeouts, retries, rate limits |
 | Web API + webhooks | FastAPI | Simple, fast, automatic API docs |
 | Database | PostgreSQL 16 in Docker | Required by the course |
