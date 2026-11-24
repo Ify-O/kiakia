@@ -16,7 +16,13 @@ from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
 from kiakia.adapters.telegram.sender import TelegramSender
 from kiakia.adapters.telegram.source import TelegramSource
-from kiakia.application.conversations import GetConversation, ListConversations, ListMessages
+from kiakia.application.conversations import (
+    GetConversation,
+    ListConversations,
+    ListFeed,
+    ListMessages,
+    UpdateConversation,
+)
 from kiakia.application.import_messages import ImportMessages
 from kiakia.application.replies import SendReply
 from kiakia.application.stats import GetInboxStats
@@ -57,6 +63,12 @@ class Services:
 
     def list_messages(self) -> ListMessages:
         return ListMessages(self.store)
+
+    def list_feed(self) -> ListFeed:
+        return ListFeed(self.store)
+
+    def update_conversation(self) -> UpdateConversation:
+        return UpdateConversation(self.store, self.store)
 
     def send_reply(self) -> SendReply:
         return SendReply(conversations=self.store, replies=self.store, keys=self.store, senders=self.senders)

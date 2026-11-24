@@ -300,3 +300,94 @@ def test_form_errors_are_in_plain_language(client):
     assert r.json()["errors"] == [{"field": "text", "message": "must not be empty or only spaces"}]
     r = post(client, f"/v1/conversations/{ada}/replies", {"text": "hi"}, key=None)
     assert r.json()["errors"][0]["message"].startswith("is required")
+
+
+# ---------- ADR 0006: PATCH, filters, feed, period stats ----------
+
+
+def patch(client, path, body):
+    data = json.dumps(body)
+    headers = {"Content-Type": "application/json"}
+    response = client.patch(path, content=data, headers=headers)
+    content_type = response.headers.get("content-type", "").split(";")[0]
+    CONTRACT.validate_response(
+        MockRequest(SERVER, "patch", path, headers=headers, data=data.encode()),
+        MockResponse(
+            response.content,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            content_type=content_type,
+        ),
+    )
+    return response
+
+
+def test_resolve_and_categorise_then_reopen(client):
+    ada = waiting_id(client, "ada")
+    r = patch(client, f"/v1/conversations/{ada}", {"resolved": True, "category": "order"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "resolved" and r.json()["category"] == "order" and r.json()["resolvedAt"]
+    assert names(call(client, "/v1/conversations", {"status": "resolved"})) == ["Ada Test"]
+    assert "Ada Test" not in names(call(client, "/v1/conversations", {"status": "waiting"}))
+    assert names(call(client, "/v1/conversations", {"category": "order"})) == ["Ada Test"]
+    again = patch(client, f"/v1/conversations/{ada}", {"resolved": True})  # same again: no change
+    assert again.json()["resolvedAt"] == r.json()["resolvedAt"]
+    reopened = patch(client, f"/v1/conversations/{ada}", {"resolved": False, "category": None})
+    assert reopened.json()["status"] == "waiting" and reopened.json()["category"] is None
+
+
+@pytest.mark.parametrize(
+    ("body", "field"),
+    [
+        ({}, "body"),
+        ({"resolved": "true"}, "resolved"),
+        ({"category": "sales"}, "category"),
+        ({"resolved": None}, "resolved"),
+        ({"colour": "red"}, "colour"),
+    ],
+)
+def test_bad_patch_is_422(client, body, field):
+    ada = waiting_id(client, "ada")
+    r = patch(client, f"/v1/conversations/{ada}", body)
+    assert r.status_code == 422 and field in [e["field"] for e in r.json()["errors"]]
+
+
+def test_patch_unknown_conversation_is_404(client):
+    assert patch(client, "/v1/conversations/999999", {"resolved": True}).status_code == 404
+
+
+def test_feed_by_channel_and_direction(client):
+    body = call(client, "/v1/messages", {"channel": "telegram", "direction": "in", "limit": 2}).json()
+    assert len(body["data"]) == 2 and body["page"]["nextCursor"]
+    first = body["data"][0]
+    assert first["message"]["channel"] == "telegram" and first["message"]["direction"] == "in"
+    assert first["contact"]["displayName"] == "100% Real_Deal"  # newest customer message
+    assert call(client, "/v1/messages", {"channel": "whatsapp"}).json()["data"] == []
+
+
+def test_period_filters_and_stats(client):
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    recent = (now - timedelta(minutes=20)).isoformat()
+    assert names(call(client, "/v1/conversations", {"from": recent})) == ["100% Real_Deal"]
+    stats = call(client, "/v1/stats", {"from": recent}).json()
+    assert stats["messages"] == 1 and stats["waiting"] == 3  # waiting is "right now", not the period
+    full = call(client, "/v1/stats").json()
+    assert full["messagesReceived"] == 5 and full["responseRate"] == 0.25  # 1 of 4 chats answered
+    assert full["medianFirstResponseSeconds"] == 5 * 60  # Bayo: 50 -> 45 min ago
+    assert full["byChannel"][0]["channel"] == "telegram" and full["byCategory"]["none"] == 4
+
+
+@pytest.mark.parametrize(
+    ("params", "field"),
+    [
+        ({"from": "2026-11-25T10:00:00Z", "to": "2026-11-25T09:00:00Z"}, "from"),
+        ({"from": "2026-11-25T10:00:00"}, "from"),  # no time zone
+        ({"to": "yesterday"}, "to"),
+    ],
+)
+def test_bad_periods_are_400(client, params, field):
+    for path in ("/v1/conversations", "/v1/stats", "/v1/messages"):
+        r = call(client, path, params)
+        assert r.status_code == 400 and field in [e["field"] for e in r.json()["errors"]], path

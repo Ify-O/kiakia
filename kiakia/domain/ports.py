@@ -9,13 +9,17 @@ from datetime import datetime
 from typing import Protocol
 
 from .models import (
+    ConversationChanges,
     ConversationDetail,
     ConversationFilter,
     ConversationSummary,
+    FeedFilter,
+    FeedItem,
     FetchResult,
     IdempotencyClaim,
     InboxStats,
     Message,
+    Period,
     Reject,
     RunStatus,
     SentMessage,
@@ -70,7 +74,7 @@ class ImportRunLog(Protocol):
 class StatsQuery(Protocol):
     """Read-only overview numbers (kept separate from MessageRepository: interface segregation)."""
 
-    def inbox_stats(self) -> InboxStats: ...
+    def inbox_stats(self, period: Period) -> InboxStats: ...
 
 
 # A position in a sorted list: (sort time, id). Used for keyset pagination (docs/adr/0003).
@@ -91,6 +95,14 @@ class ConversationQuery(Protocol):
     def list_messages(self, conversation_id: int, limit: int, before: Keyset | None) -> list[StoredMessage]:
         """Up to `limit` messages, newest first, strictly older than `before`."""
         ...
+
+    def list_feed(self, filters: FeedFilter, limit: int, before: Keyset | None) -> list[FeedItem]:
+        """Messages across all conversations, newest first, strictly older than `before`."""
+        ...
+
+
+class ConversationUpdater(Protocol):
+    def update_conversation(self, conversation_id: int, changes: ConversationChanges) -> None: ...
 
 
 class HealthCheck(Protocol):

@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from kiakia.domain.errors import (
@@ -20,6 +21,7 @@ from kiakia.domain.errors import (
     IdempotencyConflict,
     InvalidCursor,
     InvalidInput,
+    InvalidQuery,
     NotFound,
     RateLimited,
     SourceRejectedRequest,
@@ -117,6 +119,17 @@ def install_error_handlers(app: FastAPI) -> None:
             [{"field": exc.field, "message": exc.message}],
         )
 
+    @app.exception_handler(InvalidQuery)
+    async def on_invalid_query(request: Request, exc: InvalidQuery) -> JSONResponse:
+        return problem(
+            request,
+            400,
+            "bad-request",
+            "The request is malformed",
+            "1 parameter is invalid.",
+            [{"field": exc.field, "message": exc.message}],
+        )
+
     @app.exception_handler(IdempotencyConflict)
     async def on_idempotency_conflict(request: Request, exc: IdempotencyConflict) -> JSONResponse:
         return problem(request, 409, "idempotency-key-reused", "Idempotency-Key conflict", str(exc))
@@ -163,6 +176,18 @@ def install_error_handlers(app: FastAPI) -> None:
     async def on_http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         if exc.status_code == 404:
             return problem(request, 404, "not-found", "Not found", "No such endpoint.")
+        if exc.status_code == 405:
+            # RFC 9110: `Allow` must list EVERY method of the path. Starlette only looks at one
+            # route, so collect them from all routes that match this path.
+            methods = sorted(
+                {
+                    m
+                    for r in request.app.routes
+                    if isinstance(r, APIRoute) and r.path_regex.match(request.url.path)
+                    for m in (r.methods or set())
+                }
+            )
+            return problem(request, 405, "http-error", str(exc.detail), headers={"Allow": ", ".join(methods)})
         # Keep headers the HTTP standard requires, e.g. `Allow` on 405 (RFC 9110).
         return problem(
             request,

@@ -123,7 +123,9 @@ def test_messages_of_missing_conversation_is_not_found():
 
 def test_messages_paginate_newest_first():
     msgs = [
-        StoredMessage(i, 1, Direction.IN, MessageKind.TEXT, f"m{i}", False, T0 - timedelta(minutes=i))
+        StoredMessage(
+            i, 1, Direction.IN, MessageKind.TEXT, f"m{i}", False, T0 - timedelta(minutes=i), Channel.TELEGRAM
+        )
         for i in range(1, 5)
     ]
     use_case = ListMessages(FakeQuery([summary(1)], msgs))

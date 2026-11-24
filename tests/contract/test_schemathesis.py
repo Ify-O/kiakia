@@ -29,5 +29,9 @@ def test_api_matches_contract(case):
     # A cursor is an opaque token: only values the server issued are valid, which no schema can
     # express. So for requests with a made-up cursor we skip ONLY the "valid-looking input must be
     # accepted" check (they correctly get 400). Every other check still runs on them.
-    excluded = [positive_data_acceptance] if "cursor" in (case.query or {}) else []
+    # Same for from/to: "from must be before to" is a rule BETWEEN two parameters (docs/adr/0006),
+    # which OpenAPI can't express, so a valid-looking pair may correctly get 400.
+    query = case.query or {}
+    opaque_or_cross_field = "cursor" in query or ("from" in query and "to" in query)
+    excluded = [positive_data_acceptance] if opaque_or_cross_field else []
     case.call_and_validate(excluded_checks=excluded)

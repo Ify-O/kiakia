@@ -57,3 +57,12 @@ class ChannelNotSupported(SourceRejectedRequest):
 class DeliveryUnknown(KiakiaError):
     """We sent the message but couldn't confirm delivery (e.g. timed out waiting for the answer).
     It may have reached the customer, so it must NOT be retried automatically (-> 502)."""
+
+
+class InvalidQuery(KiakiaError):
+    """A query parameter is invalid in a way only the domain can tell (-> 400)."""
+
+    def __init__(self, field: str, message: str):
+        super().__init__(f"{field}: {message}")
+        self.field = field
+        self.message = message

@@ -60,7 +60,14 @@ class FakeStore:
 
     def record_reply(self, conversation_id, external_message_id, text, sent_at):
         m = StoredMessage(
-            len(self.messages) + 1, conversation_id, Direction.OUT, MessageKind.TEXT, text, False, sent_at
+            len(self.messages) + 1,
+            conversation_id,
+            Direction.OUT,
+            MessageKind.TEXT,
+            text,
+            False,
+            sent_at,
+            Channel.TELEGRAM,
         )
         self.messages[m.id] = m
         return m

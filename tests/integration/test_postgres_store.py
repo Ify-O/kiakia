@@ -7,7 +7,7 @@ import psycopg
 import pytest
 
 from kiakia.adapters.postgres.repository import PostgresStore
-from kiakia.domain.models import Channel, Direction, Message, MessageKind, Reject, RunStatus, Sender
+from kiakia.domain.models import Channel, Direction, Message, MessageKind, Period, Reject, RunStatus, Sender
 
 pytestmark = pytest.mark.integration
 
@@ -118,7 +118,7 @@ def test_inbox_stats(conn):
             msg("9002", 1, 2, BAYO),
         ]
     )
-    st = store.inbox_stats()
+    st = store.inbox_stats(Period())
     assert (st.contacts, st.conversations, st.messages) == (2, 2, 3)
     assert st.by_kind == {MessageKind.TEXT: 2, MessageKind.VOICE: 1}
 
@@ -210,3 +210,112 @@ def test_expired_key_can_be_reused(conn):
     with conn.cursor() as cur:
         cur.execute("UPDATE idempotency_keys SET created_at = now() - interval '25 hours' WHERE key = 'k3'")
     assert store.claim("replies", "k3", "new-request").outcome is ClaimOutcome.NEW
+
+
+# ---------- ADR 0006: resolved status, filters, feed, stats ----------
+
+
+def _status(store, chat):
+    from kiakia.domain.models import ConversationFilter
+
+    [c] = [c for c in store.list_conversations(ConversationFilter(), 50, None) if c.external_chat_id == chat]
+    return c
+
+
+def test_resolve_hides_from_waiting_and_a_new_message_reopens_it(conn):
+    from kiakia.domain.models import ConversationChanges, ConversationStatus
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA, "thanks!")])
+    cid = _conversation_id(conn, "9001")
+    assert _status(store, "9001").status is ConversationStatus.WAITING
+
+    store.update_conversation(
+        cid, ConversationChanges(resolved_at=T0 + timedelta(minutes=1), resolved_set=True)
+    )
+    resolved = _status(store, "9001")
+    assert resolved.status is ConversationStatus.RESOLVED and resolved.waiting_since is None
+    assert store.waiting_customers() == []
+
+    store.save_messages([msg("9001", 2, 5, ADA, "one more question…")])  # customer writes again
+    again = _status(store, "9001")
+    assert again.status is ConversationStatus.WAITING and again.unanswered_count == 1
+    assert again.resolved_at is not None  # kept, but no longer hides the new message
+
+
+def test_reply_after_resolve_counts_as_answered(conn):
+    from kiakia.domain.models import ConversationChanges, ConversationStatus
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA)])
+    cid = _conversation_id(conn, "9001")
+    store.update_conversation(
+        cid, ConversationChanges(resolved_at=T0 + timedelta(minutes=1), resolved_set=True)
+    )
+    store.record_reply(cid, "500", "anything else?", T0 + timedelta(minutes=2))
+    assert _status(store, "9001").status is ConversationStatus.ANSWERED
+
+
+def test_filters_by_status_category_and_period(conn):
+    from kiakia.domain.models import Category, ConversationChanges, ConversationFilter, ConversationStatus
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA), msg("9002", 1, 60 * 24 * 3, BAYO)])  # Bayo: 3 days later
+    store.update_conversation(
+        _conversation_id(conn, "9001"), ConversationChanges(category=Category.ORDER, category_set=True)
+    )
+    names = lambda f: [c.contact_name for c in store.list_conversations(f, 50, None)]  # noqa: E731
+    assert names(ConversationFilter(category=Category.ORDER)) == ["Ada Test"]
+    assert names(ConversationFilter(uncategorized=True)) == ["Bayo"]
+    assert names(ConversationFilter(period=Period(T0 + timedelta(days=1), None))) == ["Bayo"]
+    assert names(ConversationFilter(period=Period(None, T0 + timedelta(days=1)))) == ["Ada Test"]
+    assert names(ConversationFilter(status=ConversationStatus.RESOLVED)) == []
+
+
+def test_feed_lists_all_messages_newest_first_with_filters(conn):
+    from kiakia.domain.models import FeedFilter
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA, "a"), msg("9002", 1, 1, BAYO, "b")])
+    store.record_reply(_conversation_id(conn, "9001"), "500", "c", T0 + timedelta(minutes=2))
+    feed = store.list_feed(FeedFilter(), 10, None)
+    assert [(f.message.body, f.contact_name) for f in feed] == [
+        ("c", "Ada Test"),
+        ("b", "Bayo"),
+        ("a", "Ada Test"),
+    ]
+    assert all(f.message.channel is Channel.TELEGRAM for f in feed)
+    assert [f.message.body for f in store.list_feed(FeedFilter(direction=Direction.IN), 10, None)] == [
+        "b",
+        "a",
+    ]
+    older = store.list_feed(FeedFilter(), 10, (feed[0].message.sent_at, feed[0].message.id))
+    assert [f.message.body for f in older] == ["b", "a"]
+
+
+def test_stats_definitions_from_adr_0006(conn):
+    from kiakia.domain.models import Category, ConversationChanges
+
+    store = PostgresStore(conn)
+    store.save_messages(
+        [
+            msg("9001", 1, 0, ADA, "q1"),
+            msg("9001", 2, 2, ADA, "q2"),  # Ada: first unanswered at +0
+            msg("9002", 1, 10, BAYO, "hi"),  # Bayo: will stay waiting
+        ]
+    )
+    ada = _conversation_id(conn, "9001")
+    store.record_reply(ada, "500", "answer", T0 + timedelta(minutes=6))  # first response after 6 min
+    store.update_conversation(ada, ConversationChanges(category=Category.ORDER, category_set=True))
+
+    st = store.inbox_stats(Period())
+    assert (st.conversations, st.messages, st.messages_received) == (2, 4, 3)
+    assert st.waiting == 1 and st.response_rate == 0.5  # Ada answered, Bayo waiting
+    assert st.median_first_response_seconds == 6 * 60
+    assert st.by_category == {"enquiry": 0, "order": 1, "complaint": 0, "other": 0, "none": 1}
+    [tg] = st.by_channel
+    assert (tg.channel, tg.messages_received, tg.waiting, tg.response_rate) == (Channel.TELEGRAM, 3, 1, 0.5)
+
+    later = store.inbox_stats(Period(T0 + timedelta(minutes=5), None))  # only Bayo's message + the reply
+    assert (later.conversations, later.messages, later.waiting) == (1, 2, 1)  # waiting = right now
+    assert later.median_first_response_seconds == 6 * 60  # the reply was sent in the period

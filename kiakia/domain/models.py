@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+from .errors import InvalidQuery
+
 
 class Channel(StrEnum):
     TELEGRAM = "telegram"
@@ -113,14 +115,54 @@ class InboxStats:
     by_kind: dict[MessageKind, int]
     waiting: int = 0
     oldest_waiting_since: datetime | None = None
+    messages_received: int = 0
+    response_rate: float | None = None
+    median_first_response_seconds: int | None = None
+    by_channel: list["ChannelStats"] = field(default_factory=list)
+    by_category: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ChannelStats:
+    channel: Channel
+    conversations: int
+    messages: int
+    messages_received: int
+    waiting: int
+    response_rate: float | None
 
 
 # ---------- Read models for browsing the inbox (API / UI) ----------
 
 
 class ConversationStatus(StrEnum):
-    WAITING = "waiting"  # the customer's last message has no reply yet
-    ANSWERED = "answered"
+    WAITING = "waiting"  # the customer has messages with no reply (and not resolved after them)
+    ANSWERED = "answered"  # the business replied last
+    RESOLVED = "resolved"  # marked done; a new customer message makes it WAITING again (ADR 0006)
+
+
+class Category(StrEnum):
+    """A light label staff give a conversation (ADR 0006: not a CRM)."""
+
+    ENQUIRY = "enquiry"
+    ORDER = "order"
+    COMPLAINT = "complaint"
+    OTHER = "other"
+
+
+@dataclass(frozen=True)
+class Period:
+    """A time window: start inclusive, end exclusive; None = open-ended."""
+
+    start: datetime | None = None
+    end: datetime | None = None
+
+    def __post_init__(self) -> None:
+        for name, value in (("from", self.start), ("to", self.end)):
+            if value is not None and value.utcoffset() is None:
+                raise InvalidQuery(name, "must include a time zone, e.g. 2026-11-24T00:00:00Z")
+        if self.start is not None and self.end is not None and self.start >= self.end:
+            raise InvalidQuery("from", "must be before 'to'")
 
 
 class ConversationSort(StrEnum):
@@ -134,6 +176,9 @@ class ConversationFilter:
     channel: Channel | None = None
     search: str | None = None  # in the customer's name or username
     sort: ConversationSort = ConversationSort.RECENT
+    category: Category | None = None
+    uncategorized: bool = False  # only conversations without a category
+    period: Period = field(default_factory=Period)  # on the last message time
 
 
 @dataclass(frozen=True)
@@ -150,6 +195,8 @@ class ConversationSummary:
     last_reply_at: datetime | None
     last_message_preview: str | None
     unanswered_count: int
+    category: Category | None = None
+    resolved_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +217,34 @@ class StoredMessage:
     body: str | None
     has_media: bool
     sent_at: datetime
+    channel: Channel
+
+
+@dataclass(frozen=True)
+class FeedItem:
+    """A message plus the customer it belongs to (for the all-messages view)."""
+
+    message: StoredMessage
+    contact_id: int
+    contact_name: str
+    contact_username: str | None
+
+
+@dataclass(frozen=True)
+class FeedFilter:
+    channel: Channel | None = None
+    direction: Direction | None = None
+    period: Period = field(default_factory=Period)
+
+
+@dataclass(frozen=True)
+class ConversationChanges:
+    """What PATCH /conversations changes. *_set says whether the field was given at all."""
+
+    category: Category | None = None
+    category_set: bool = False
+    resolved_at: datetime | None = None
+    resolved_set: bool = False
 
 
 @dataclass(frozen=True)
