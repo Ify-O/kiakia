@@ -111,6 +111,9 @@ Consequences:
    Web inbox (mobile-friendly) used by the owner and staff
 ```
 
+**Architecture style: Clean Architecture (Ports and Adapters).** Full rules, diagram and
+coupling guide: [docs/ENGINEERING.md](docs/ENGINEERING.md).
+
 **Key design idea:** each platform gets its own **connector** that translates the
 platform's format into our single message format. Adding TikTok later means one new
 connector, and nothing else changes.
@@ -119,10 +122,12 @@ connector, and nothing else changes.
 
 | Part | Choice | Why |
 |---|---|---|
-| Language | Python 3.11+ | Our choice for the course |
+| Language | Python 3.9+ | Our choice for the course |
 | HTTP client | `requests` (or `httpx`) | Timeouts, retries, rate limits |
 | Web API + webhooks | FastAPI | Simple, fast, automatic API docs |
 | Database | PostgreSQL 16 in Docker | Required by the course |
+| Schema versioning | **Alembic** migrations | Industry standard for evolving SQL schemas (see docs/ENGINEERING.md §6) |
+| Tests | **pytest** (unit + integration against Postgres in Docker) | Automate "it works" (§7) |
 | Background jobs | A simple scheduler/worker to start; Redis queue later if needed | Alerts, transcription, daily summary |
 | Voice transcription | Whisper (open source, runs locally) to start | Free, local. **Test it on real Pidgin and Yoruba voice notes early.** |
 | Payments | Paystack (test mode) | Common in Nigeria, has payment links and webhooks |
@@ -155,45 +160,55 @@ connector, and nothing else changes.
 ## 9. Roadmap: one step per course week
 
 Each week builds on the last. Adjust when each week's assignment brief comes out.
+**Change (Nov 2026):** Week 1 uses **Telegram** instead of Meta. Meta's setup (developer
+account, Page, Instagram link) takes time, while a Telegram bot takes 2 minutes. Because
+every channel is a separate adapter, adding Meta later changes nothing else.
 
 | Week | Build | Proves |
 |---|---|---|
-| **1** | **Importer:** call Meta's Graph API (Conversations API) for my own Facebook Page and Instagram, parse the messages, store them in Postgres (Docker) through a repository layer, idempotently. Plus a **"who's waiting" query** on the real data. | Client (timeouts, retries, rate limit), parser, schema, repository, no duplicates. **P1 is already visible.** |
-| 2 | **Webhooks:** a FastAPI endpoint receives new messages live (ngrok). Add the WhatsApp Cloud API test number. | Real-time messages, duplicate-safe |
-| 3 | **Inbox + replies:** a REST API and a simple web inbox. Reply from Kiakia, with a reply-window countdown. Staff logins. | P5: one inbox. Replies record who sent them |
-| 4 | **Alerts + staff stats:** waiting alerts, daily summary, per-staff response times. | P1 + P2 |
+| **1** | **Telegram importer:** call the Telegram Bot API (`getUpdates`), parse it into our domain model, store it in Postgres (Docker) through a repository, idempotently. Schema managed by **migrations**. Unit and integration **tests**. Plus a **"who's waiting" list**. | Client (timeouts, retries with backoff, rate limit), parser, schema, repository, no duplicates, clean architecture. **P1 is visible.** |
+| 2 | **Meta connector:** Facebook Messenger + Instagram history through the Graph API (as a new adapter). | Adding a channel without touching the core |
+| 3 | **Live messages + replies:** webhooks (FastAPI + ngrok), send replies (records *who* replied), WhatsApp Cloud API test number. | P5 + the start of P2 |
+| 4 | **Inbox UI + alerts + staff stats:** web inbox, waiting alerts, daily summary, per-staff response times. | P1 + P2 |
 | 5 | **Voice notes:** download the audio, transcribe it, show the text. | P3 |
 | 6 | **Payments:** Paystack payment link from a chat, plus a webhook that marks it "Paid ✅". | P4 |
-| Later | TikTok, Telegram, email connectors; AI reply suggestions; mobile app | P5 expansion |
+| Later | TikTok, email; AI reply suggestions; mobile app | P5 expansion |
 
 ### Week 1 in detail
 
-**Before writing any code (my homework):**
-1. Make sure the business's Instagram is a **professional account** linked to the **Facebook Page**.
-2. Create a **Meta developer account** at developers.facebook.com and create an app (type: Business).
-3. In **Graph API Explorer**, get a **Page access token** with message permissions
-   (`pages_show_list`, `pages_messaging`, `pages_read_engagement`, `instagram_basic`,
-   `instagram_manage_messages`). Check the current permission names in Meta's docs.
-4. **Explore by hand first:** call the Page's `conversations` endpoint for Messenger and
-   Instagram in Graph API Explorer and look at the real response. Note the fields, the
-   date format and the pagination.
-5. Put the token in `.env` (never in git).
+**My homework (2 minutes):** in Telegram, message **@BotFather**, send `/newbot`, choose a
+name and a username, and copy the **token** into `.env` (never into git or a chat). Then have
+a few people message the bot so there's real data.
 
-**Then we build:**
-- `docker-compose.yml` + `db/schema.sql`
-- `kiakia/client.py`: Graph API client with timeouts, retries and backoff, respecting Meta's rate-limit headers, and following pagination
-- `kiakia/parser.py`: Meta JSON → our `Message` and `Conversation` models; handles missing fields, dates (UTC) and bad records
-- `kiakia/repository.py`: idempotent upserts keyed on the platform's message ID
-- `kiakia/import_messages.py`: run the import, then print **"customers waiting for a reply"**
-- `README.md`: which API and why, how to run it, surprises in the data
+**Explore by hand first:** open
+`https://api.telegram.org/bot<TOKEN>/getUpdates` in the browser and look at the real JSON.
 
-**Demo on Saturday:** my real conversations in Postgres, plus the list of customers still waiting for a reply.
+**Build steps (one commit each):**
+1. Engineering guidelines + plan update
+2. Project skeleton: folders per layer, config, Docker Compose, Alembic migration #1
+3. Domain model + ports + Telegram parser, with unit tests (fake fixtures)
+4. Resilient HTTP helper + Telegram client, with unit tests (fake HTTP)
+5. Postgres repository, with integration tests (no duplicates on re-import)
+6. Use cases (ImportMessages, ListWaitingCustomers) + CLI: start with 10 messages, then all
+7. README: which API and why, how to run it, surprises in the data
+
+**Telegram facts that shape the design** (check them against the official docs at core.telegram.org/bots/api):
+- `getUpdates` only keeps updates for about **24 hours**, and calling it with an `offset`
+  **confirms and deletes** older updates. So we save to the DB **first**, then move the offset.
+- Each update has a unique `update_id`, and each message a `message_id` that is unique
+  **within its chat**. So our unique key is `channel + chat_id + message_id`.
+- A 429 response includes `parameters.retry_after` (seconds to wait).
+- Dates are **unix timestamps (UTC)**.
+
+**Demo on Saturday:** real Telegram messages in Postgres, re-importing creates no duplicates,
+tests pass, and the list of customers still waiting for a reply.
 
 ## 10. Rules we follow
 
 - Commit before each task, so the agent's work can always be undone.
 - Secrets (tokens, passwords) go in `.env`, and `.env` is in `.gitignore` **before** the first commit.
 - Explore every API by hand before building against it; don't trust invented endpoints.
+- Follow [docs/ENGINEERING.md](docs/ENGINEERING.md): clean architecture, migrations, tests, security.
 - Start small: 10 messages end to end first, then complete and robust.
 - Don't keep code I can't explain.
 - **Customer messages are private data.** Never commit real exports or screenshots of customer chats.

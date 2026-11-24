@@ -1,0 +1,7 @@
+# Pinned on purpose; update deliberately (docs/ENGINEERING.md §8).
+requests==2.32.3
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+alembic==1.14.0
+SQLAlchemy==2.0.36   # used only by Alembic to run migrations
+pytest==8.3.4

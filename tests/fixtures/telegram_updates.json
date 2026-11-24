@@ -1,0 +1,83 @@
+{
+  "ok": true,
+  "result": [
+    {
+      "update_id": 500001,
+      "message": {
+        "message_id": 11,
+        "from": {"id": 9001, "is_bot": false, "first_name": "Ada", "last_name": "Test", "username": "ada_test"},
+        "chat": {"id": 9001, "type": "private", "first_name": "Ada", "last_name": "Test"},
+        "date": 1795600000,
+        "text": "  Hello, how much is the blue bag?  "
+      }
+    },
+    {
+      "update_id": 500002,
+      "message": {
+        "message_id": 12,
+        "from": {"id": 9001, "is_bot": false, "first_name": "Ada"},
+        "chat": {"id": 9001, "type": "private"},
+        "date": 1795600060,
+        "voice": {"file_id": "VOICE-FILE-1", "file_unique_id": "u1", "duration": 14, "mime_type": "audio/ogg"}
+      }
+    },
+    {
+      "update_id": 500003,
+      "message": {
+        "message_id": 3,
+        "from": {"id": 9002, "is_bot": false, "username": "buyer_two"},
+        "chat": {"id": 9002, "type": "private", "username": "buyer_two"},
+        "date": 1795600120,
+        "photo": [
+          {"file_id": "PHOTO-SMALL", "file_unique_id": "p1", "width": 90, "height": 90},
+          {"file_id": "PHOTO-LARGE", "file_unique_id": "p2", "width": 1280, "height": 1280}
+        ],
+        "caption": "Do you have this in red?"
+      }
+    },
+    {
+      "update_id": 500004,
+      "edited_message": {
+        "message_id": 11,
+        "from": {"id": 9001, "is_bot": false, "first_name": "Ada", "last_name": "Test"},
+        "chat": {"id": 9001, "type": "private"},
+        "date": 1795600000,
+        "edit_date": 1795600200,
+        "text": "Hello, how much is the blue bag in size L?"
+      }
+    },
+    {
+      "update_id": 500005,
+      "message": {
+        "message_id": 70,
+        "from": {"id": 9003, "is_bot": false, "first_name": "Group", "last_name": "Member"},
+        "chat": {"id": -100123, "type": "supergroup", "title": "Some group"},
+        "date": 1795600300,
+        "text": "hello group"
+      }
+    },
+    {
+      "update_id": 500006,
+      "callback_query": {"id": "cb1", "from": {"id": 9001, "is_bot": false, "first_name": "Ada"}, "data": "x"}
+    },
+    {
+      "update_id": 500007,
+      "message": {
+        "message_id": 13,
+        "from": {"id": 9004, "is_bot": false, "first_name": "No"},
+        "chat": {"id": 9004, "type": "private"},
+        "text": "this message has no date"
+      }
+    },
+    {
+      "update_id": 500008,
+      "message": {
+        "message_id": 4,
+        "from": {"id": 9005, "is_bot": false},
+        "chat": {"id": 9005, "type": "private"},
+        "date": 1795600400,
+        "sticker": {"file_id": "STICKER-1", "file_unique_id": "s1", "width": 512, "height": 512}
+      }
+    }
+  ]
+}
