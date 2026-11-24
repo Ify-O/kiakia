@@ -6,6 +6,12 @@
 > with an ADR (rule from [ADR 0001](../adr/0001-contract-first-openapi.md)).
 >
 > 👉 Try the clickable mockup: [mockup.html](mockup.html) (open it in a browser; it uses fake data).
+>
+> **Revision 2 (owner feedback):** platform icons with unique colours everywhere, filters for
+> date/time, platform and category, clearer "received … ago, no reply yet" wording, a light/dark
+> switch, a richer dashboard (response rate, typical reply time, a per-platform drill-down), and
+> marking chats **resolved** with a category (enquiry / order / complaint / other). The new API needs
+> are in [ADR 0006](../adr/0006-dashboard-filters-resolve-categories.md) (contract first).
 
 ---
 
@@ -143,6 +149,7 @@ flowchart LR
 | **Delivery unknown** | ⚠ "We couldn't confirm it was delivered. Check the chat before sending again." | 502 `delivery-unknown` |
 | **Conflict** | "This reply is still being processed. Refresh in a moment." | 409 |
 | **Not found** | "This conversation doesn't exist (anymore)." + back to Inbox | 404 |
+| **No match for filters** | "No chats match these filters." + **Clear all filters** button | Empty `data` with filters set |
 
 ## 5. Interactions ("make it interactive" challenge)
 
@@ -174,13 +181,61 @@ flowchart LR
 | Width | Layout |
 |---|---|
 | Phone (< 768 px) | One screen at a time: Dashboard → Inbox → Conversation; bottom navigation |
-| Laptop (≥ 1024 px) | Stats on top; **two panes**: chat list on the left, conversation on the right |
+| Laptop (≥ 1024 px) | Top navigation (Dashboard · Inbox · Messages by platform); the Inbox has **two panes**: chat list on the left, conversation on the right |
+| Phone navigation | The three views move to a **bottom bar**, within thumb reach |
 
-## 8. Contract check: does the UI need anything new?
+## 8. Revision 2: what changed and where the data comes from
 
-Everything above uses fields that **already exist** in `openapi.yaml`. **No contract change is needed**,
-so no new ADR. Ideas for later that **would** need a contract change first (and an ADR):
-"messages today", staff names on replies (problem #2), and voice-note transcripts (problem #3).
+### 8.1 Platforms: icons + unique colours (UI only)
+Every chat row, chat header and **every message bubble** shows its platform icon in a coloured circle,
+and platform names appear as coloured "pills". The icons are simple shapes drawn for Kiakia (not the
+official logos), always with the name as a tooltip / screen-reader label.
+
+| Platform | Colour | Icon |
+|---|---|---|
+| Telegram | `#229ED9` sky blue | paper plane |
+| WhatsApp | `#25D366` green | phone in a bubble |
+| Instagram | `#E1306C` pink | rounded camera |
+| Messenger | `#8B5CF6` violet | bubble with a zig-zag |
+| TikTok | black (white in dark mode) | music note |
+| Email | `#64748B` slate | envelope |
+
+### 8.2 Clearer time wording (UI only)
+"12 min" alone was ambiguous. Now:
+- List: **"📩 Received 12 min ago · no reply yet"** (coloured 🟢/🟠/🔴), **"↩ You replied 44 min ago"**,
+  or **"✓ Resolved yesterday"**.
+- Chat header: **"Waiting 12 min for a reply: the first unanswered message arrived today 10:42."**
+- Dashboard: **"Longest wait: Ada Test, since today 09:12"**.
+
+### 8.3 Light / dark switch (UI only)
+A header button cycles **🌗 Auto → ☀️ Light → 🌙 Dark**, remembered on the device. Auto follows the phone.
+
+### 8.4 Filters (contract: ADR 0006 §1)
+Inbox filters: **status tabs** (Waiting / Answered / Resolved / All), **platform toggles** (tap the icons),
+**date** (Any time, Today, Yesterday, Last 7 days, Last 30 days, Custom range), **category**, and search.
+→ `GET /v1/conversations?status=&channel=&from=&to=&category=&q=`
+
+### 8.5 Better dashboard (contract: ADR 0006 §2–3)
+| Card | Contract source |
+|---|---|
+| Customers waiting right now | `stats.waiting` |
+| Longest wait (name + time) | first item of `status=waiting&sort=longestWaiting` |
+| **Response rate** (ring) | `stats.responseRate` |
+| **Typical time to first reply** | `stats.medianFirstResponseSeconds` |
+| **Messages received → by platform** (clickable) | `stats.byChannel[]` → opens the *Messages by platform* view |
+| Messages by platform (bars) | `stats.byChannel[].messages` |
+| What customers write about | `stats.byCategory` |
+| Period switch (Today / 7 / 30 days / All) | `GET /v1/stats?from=&to=` |
+
+**Messages by platform view:** one card per platform (messages, chats, waiting, % answered) and a list
+of all messages, newest first, filterable by platform and period → `GET /v1/messages?channel=&from=&to=`.
+Clicking a message opens its conversation.
+
+### 8.6 Resolve + categorise (contract: ADR 0006 §4)
+In the chat header: a **category** menu (❓ Enquiry, 🛍️ Order, ⚠️ Complaint, 💬 Other) and
+**✓ Mark resolved / ↺ Reopen** → `PATCH /v1/conversations/{id}`.
+A resolved chat leaves the waiting list; **if the customer writes again, it automatically returns to
+Waiting**, so resolving can never hide a new question.
 
 ## 9. Tech (from ADR 0005)
 

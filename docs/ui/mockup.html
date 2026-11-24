@@ -11,6 +11,10 @@
     --bg: #F3F5F4; --surface: #FFFFFF; --surface-2: #F8FAF9; --line: #E3E8E6;
     --text: #111827; --muted: #6B7280; --bubble-in: #FFFFFF; --bubble-out: #DDF3EB;
     --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+    /* Platform colours: unique per channel, used for icon chips, pills and charts */
+    --telegram: #229ED9; --whatsapp: #25D366; --instagram: #E1306C;
+    --messenger: #8B5CF6; --tiktok: #111111; --email: #64748B;
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -18,139 +22,181 @@
       --green: #4ADE80; --amber: #FBBF24; --red: #F87171;
       --bg: #070C14; --surface: #0B1220; --surface-2: #101A2B; --line: #1F2A3C;
       --text: #E5E7EB; --muted: #9CA3AF; --bubble-in: #1C2A40; --bubble-out: #0E3B2E;
-      --shadow: 0 1px 2px rgba(0,0,0,.4);
+      --shadow: 0 1px 2px rgba(0,0,0,.4); --tiktok: #E5E7EB; color-scheme: dark;
     }
+  }
+  :root[data-theme="dark"] {
+    --brand: #34D399; --brand-ink: #062419; --accent: #FBBF24;
+    --green: #4ADE80; --amber: #FBBF24; --red: #F87171;
+    --bg: #070C14; --surface: #0B1220; --surface-2: #101A2B; --line: #1F2A3C;
+    --text: #E5E7EB; --muted: #9CA3AF; --bubble-in: #1C2A40; --bubble-out: #0E3B2E;
+    --shadow: 0 1px 2px rgba(0,0,0,.4); --tiktok: #E5E7EB; color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
-  .app { max-width: 1200px; margin: 0 auto; padding: 12px 16px 80px; }
+  .app { max-width: 1240px; margin: 0 auto; padding: 12px 16px 90px; }
 
-  /* Header */
-  header { display: flex; align-items: center; gap: 12px; padding: 6px 0 14px; flex-wrap: wrap; }
+  /* Header + nav */
+  header { display: flex; align-items: center; gap: 10px; padding: 6px 0 10px; flex-wrap: wrap; }
   .logo { font-weight: 800; font-size: 22px; letter-spacing: -.5px; }
   .logo span { color: var(--accent); }
   .tag { color: var(--muted); font-size: 13px; }
-  .live { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 var(--green);
-    animation: pulse 2s infinite; }
+  .spacer { flex: 1; }
+  .live { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
   .dot.off { background: var(--red); animation: none; }
   @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5);} 70% { box-shadow: 0 0 0 8px rgba(22,163,74,0);} 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0);} }
+  .theme { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; }
   .demo { font-size: 13px; display: flex; gap: 6px; align-items: center; background: var(--surface);
     border: 1px dashed var(--accent); border-radius: 10px; padding: 4px 8px; }
   .demo select { border: 0; background: transparent; }
+  nav.views { display: flex; gap: 6px; margin-bottom: 12px; }
+  nav.views button { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 14px; font-weight: 600; }
+  nav.views button[aria-current="page"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  .view { display: none; } .view.active { display: block; }
+
+  /* Platform icon chip + pill */
+  .pf { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; flex: none; }
+  .pf svg { width: 13px; height: 13px; }
+  .pf.lg { width: 34px; height: 34px; } .pf.lg svg { width: 19px; height: 19px; }
+  .pf.sm { width: 16px; height: 16px; } .pf.sm svg { width: 10px; height: 10px; }
+  .pf.tiktok { color: var(--bg); }
+  .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 1px 8px 1px 2px; font-size: 12px;
+    border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); background: color-mix(in srgb, var(--c) 12%, transparent); }
 
   /* Banner */
   .banner { display: none; background: color-mix(in srgb, var(--red) 12%, var(--surface)); color: var(--red);
-    border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); border-radius: 12px; padding: 10px 14px;
-    margin-bottom: 12px; align-items: center; gap: 10px; }
+    border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; align-items: center; gap: 10px; }
   .banner.show { display: flex; }
-  .banner button { margin-left: auto; border: 1px solid currentColor; background: transparent; color: inherit;
-    border-radius: 8px; padding: 4px 10px; }
+  .banner button { margin-left: auto; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 4px 10px; }
 
-  /* Stats */
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  /* Cards + KPIs */
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
-  .stat { padding: 12px 14px; }
-  .stat b { display: block; font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .stat small { color: var(--muted); }
-  .stat.hot b { color: var(--red); }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px; }
+  .kpi { padding: 12px 14px; text-align: left; border: 1px solid var(--line); }
+  .kpi b { display: block; font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi small { color: var(--muted); display: block; }
+  .kpi.hot b { color: var(--red); }
+  button.kpi { background: var(--surface); width: 100%; }
+  button.kpi:hover { outline: 2px solid var(--brand); }
+  .ring { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; float: right;
+    background: conic-gradient(var(--brand) calc(var(--p) * 1%), var(--line) 0); }
+  .ring i { width: 40px; height: 40px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; }
+  .grid2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+  .box { padding: 12px 14px; }
+  .box h3 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .box h3 button.link { margin-left: auto; font-size: 13px; font-weight: 500; }
+  .link { border: 0; background: none; color: var(--brand); padding: 0; }
+  .period { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); }
+  .hbar { display: grid; grid-template-columns: 120px 1fr 44px; gap: 8px; align-items: center; margin: 7px 0; font-size: 13px;
+    border: 0; background: none; width: 100%; text-align: left; padding: 2px 0; }
+  .hbar .track { height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; }
+  .hbar .fill { height: 100%; border-radius: 6px; }
+  .cats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cat { border-radius: 999px; padding: 4px 10px; font-size: 13px; border: 1px solid var(--line); background: var(--surface-2); }
 
-  /* Layout */
-  .panes { display: grid; grid-template-columns: 380px 1fr; gap: 14px; min-height: 560px; }
+  /* Inbox */
+  .panes { display: grid; grid-template-columns: 400px 1fr; gap: 14px; min-height: 600px; }
   .list { display: flex; flex-direction: column; overflow: hidden; }
-  .tabs { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); }
-  .tabs button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 6px 12px; }
+  .tabs { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tabs button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 5px 11px; font-size: 14px; }
   .tabs button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
-  .tabs .count { font-size: 12px; opacity: .85; }
-  .filters { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  .filters input { flex: 1; min-width: 0; }
-  .filters input, .filters select { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 7px 10px; }
+  .filters { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .frow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .filters input, .filters select { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
+  .filters input[type=search] { flex: 1; min-width: 0; }
+  .chipbtn { border: 2px solid transparent; background: none; padding: 0; border-radius: 50%; opacity: .35; }
+  .chipbtn[aria-pressed="true"] { opacity: 1; border-color: var(--c); }
   .rows { overflow-y: auto; flex: 1; }
-  .row { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; align-items: center; padding: 11px 12px;
-    border-bottom: 1px solid var(--line); background: transparent; border-left: 0; border-right: 0; border-top: 0;
-    text-align: left; width: 100%; }
+  .row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px;
+    border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; width: 100%; }
   .row:hover, .row[aria-current="true"] { background: var(--surface-2); }
-  .heat { width: 10px; height: 10px; border-radius: 50%; }
-  .heat.g { background: var(--green); } .heat.a { background: var(--amber); } .heat.r { background: var(--red); }
-  .heat.done { background: transparent; border: 2px solid var(--muted); }
-  .name { font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+  .name { font-weight: 600; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
   .name small { color: var(--muted); font-weight: 400; }
   .preview { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
-  .meta { text-align: right; font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .meta .timer { font-weight: 700; font-variant-numeric: tabular-nums; }
-  .timer.g { color: var(--green); } .timer.a { color: var(--amber); } .timer.r { color: var(--red); }
-  .badge { display: inline-block; background: var(--red); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-top: 2px; }
-  .chan { font-size: 11px; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; }
-  .more { margin: 10px auto; display: block; border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 6px 14px; }
-
-  /* Skeleton */
+  .when { font-size: 12.5px; margin-top: 2px; }
+  .when.g { color: var(--green); } .when.a { color: var(--amber); } .when.r { color: var(--red); font-weight: 600; } .when.done { color: var(--muted); }
+  .side { text-align: right; font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; background: var(--red); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; }
+  .catTag { display: inline-block; font-size: 11px; border-radius: 6px; padding: 0 6px; background: var(--surface-2); border: 1px solid var(--line); margin-top: 3px; }
   .skel { height: 58px; margin: 8px 12px; border-radius: 10px;
-    background: linear-gradient(90deg, var(--surface-2) 25%, var(--line) 37%, var(--surface-2) 63%); background-size: 400% 100%;
-    animation: shimmer 1.4s infinite; }
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--line) 37%, var(--surface-2) 63%); background-size: 400% 100%; animation: shimmer 1.4s infinite; }
   @keyframes shimmer { 0% { background-position: 100% 0 } 100% { background-position: 0 0 } }
-
-  /* Empty */
-  .empty { text-align: center; padding: 40px 16px; color: var(--muted); }
-  .empty .big { font-size: 40px; }
+  .empty { text-align: center; padding: 36px 16px; color: var(--muted); }
+  .empty .big { font-size: 38px; }
 
   /* Conversation */
   .chat { display: flex; flex-direction: column; overflow: hidden; }
-  .chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .chat-head .back { display: none; border: 0; background: transparent; font-size: 20px; }
-  .chat-head .who { font-weight: 700; }
-  .chat-head .sub { color: var(--muted); font-size: 13px; }
-  .chat-head .right { margin-left: auto; text-align: right; font-size: 13px; }
-  .bubbles { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); }
+  .who { font-weight: 700; }
+  .sub { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .actions select { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 5px 8px; font-size: 13px; }
+  .btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 5px 10px; font-size: 13px; }
+  .btn.ok { border-color: var(--green); color: var(--green); }
+  .statusline { padding: 7px 14px; font-size: 13px; border-bottom: 1px solid var(--line); }
+  .statusline.r { background: color-mix(in srgb, var(--red) 10%, var(--surface)); color: var(--red); }
+  .statusline.a { background: color-mix(in srgb, var(--amber) 12%, var(--surface)); color: var(--amber); }
+  .statusline.g { background: color-mix(in srgb, var(--green) 10%, var(--surface)); color: var(--green); }
+  .statusline.done { color: var(--muted); }
+  .bubbles { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); min-height: 260px; }
   .bubble { max-width: 75%; padding: 8px 12px; border-radius: 16px; box-shadow: var(--shadow); white-space: pre-wrap; word-wrap: break-word; }
   .bubble.in { background: var(--bubble-in); border: 1px solid var(--line); border-bottom-left-radius: 4px; align-self: flex-start; }
   .bubble.out { background: var(--bubble-out); border-bottom-right-radius: 4px; align-self: flex-end; }
   .bubble.sending { opacity: .55; }
-  .bubble .t { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; text-align: right; }
+  .bubble .t { display: flex; gap: 5px; align-items: center; justify-content: flex-end; font-size: 11px; color: var(--muted); margin-top: 3px; }
   .bubble .media { color: var(--muted); font-style: italic; }
   .composer { border-top: 1px solid var(--line); padding: 10px 12px; }
-  .composer textarea { width: 100%; resize: vertical; min-height: 54px; max-height: 160px; border: 1px solid var(--line);
-    background: var(--surface); border-radius: 10px; padding: 9px 12px; }
+  .composer textarea { width: 100%; resize: vertical; min-height: 54px; max-height: 160px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 12px; }
   .composer textarea[aria-invalid="true"] { border-color: var(--red); }
-  .composer .line { display: flex; gap: 10px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .line { display: flex; gap: 10px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
   .err { color: var(--red); font-size: 13px; min-height: 18px; }
   .counter { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .send { border: 0; background: var(--brand); color: var(--brand-ink); border-radius: 10px; padding: 8px 16px; font-weight: 700; }
+  .send { border: 0; background: var(--brand); color: var(--brand-ink); border-radius: 10px; padding: 8px 16px; font-weight: 700; margin-left: auto; }
   .send:disabled { opacity: .5; cursor: progress; }
-  .sim { font-size: 12px; color: var(--muted); }
+  .sim, .hint { font-size: 12px; color: var(--muted); }
   .sim select { font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-  .hint { font-size: 12px; color: var(--muted); }
   .notice { margin: 0 14px 10px; padding: 8px 12px; border-radius: 10px; font-size: 13px; display: none; }
   .notice.show { display: block; }
-  .notice button { margin-top: 6px; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 4px 10px; }
   .notice.warn { background: color-mix(in srgb, var(--amber) 15%, var(--surface)); color: var(--amber); }
   .notice.bad { background: color-mix(in srgb, var(--red) 12%, var(--surface)); color: var(--red); }
+  .notice button { margin-top: 6px; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 4px 10px; }
 
-  .kinds { padding: 12px 14px; margin-top: 14px; }
-  .bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin: 8px 0; background: var(--line); }
-  .bar i { display: block; } .legend { font-size: 13px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  /* Messages-by-platform */
+  .pcards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }
+  .pcard { padding: 12px; text-align: left; border-top: 4px solid var(--c); background: var(--surface); width: 100%; }
+  .pcard[aria-pressed="true"] { outline: 2px solid var(--c); }
+  .pcard b { font-size: 22px; display: block; margin-top: 6px; }
+  .pcard small { color: var(--muted); display: block; font-size: 12px; }
+  .mrow { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 9px 12px; border: 0;
+    border-bottom: 1px solid var(--line); background: none; width: 100%; text-align: left; }
+  .mrow:hover { background: var(--surface-2); }
+  .dir { font-size: 12px; color: var(--muted); }
 
-  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(30px); opacity: 0;
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(30px); opacity: 0; max-width: 92vw;
     background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 12px; transition: .25s; z-index: 10; }
   .toast.show { opacity: 1; transform: translateX(-50%); }
   .confetti { position: fixed; inset: 0; pointer-events: none; font-size: 28px; }
   .confetti span { position: absolute; top: -40px; animation: fall 1.6s ease-in forwards; }
   @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
 
-  /* Phone */
-  @media (max-width: 860px) {
-    .stats { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, 1fr); } .pcards { grid-template-columns: repeat(3, 1fr); } .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); } .pcards { grid-template-columns: repeat(2, 1fr); }
     .panes { grid-template-columns: 1fr; min-height: 0; }
-    .panes.show-chat .list { display: none; }
-    .panes:not(.show-chat) .chat { display: none; }
-    .chat { min-height: 72vh; }
-    .chat-head .back { display: block; }
-    .bubble { max-width: 88%; }
-    .demo { order: 3; width: 100%; }
-    /* While chatting on a phone, give the conversation the whole screen. */
-    .app:has(.panes.show-chat) .stats, .app:has(.panes.show-chat) .kinds { display: none; }
+    .panes.show-chat .list { display: none; } .panes:not(.show-chat) .chat { display: none; }
+    .chat-head .back { display: block; } .bubble { max-width: 88%; }
+    .tag { display: none; } .demo { width: 100%; }
+    nav.views { position: fixed; bottom: 0; left: 0; right: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--line);
+      padding: 8px; margin: 0; justify-content: space-around; }
+    nav.views button { flex: 1; font-size: 13px; padding: 8px 4px; }
   }
 </style>
 </head>
@@ -159,290 +205,419 @@
   <header>
     <div class="logo">Kiakia<span>⚡</span></div>
     <div class="tag">Every customer, answered fast</div>
+    <div class="spacer"></div>
     <div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">Live · updated just now</span></div>
-    <label class="demo" title="Mockup only: shows how each state looks">🎬 Demo state
-      <select id="demoState">
-        <option value="normal">Normal</option>
-        <option value="loading">Loading</option>
-        <option value="empty">Nobody waiting</option>
-        <option value="error">API down</option>
-      </select>
+    <button class="theme" id="themeBtn" title="Switch light / dark mode">🌗 Auto</button>
+    <label class="demo" title="Mockup only: shows how each state looks">🎬 Demo
+      <select id="demoState"><option value="normal">Normal</option><option value="loading">Loading</option>
+        <option value="empty">Nobody waiting</option><option value="error">API down</option></select>
     </label>
   </header>
-
+  <nav class="views" aria-label="Views">
+    <button data-view="dash" aria-current="page">📊 Dashboard</button>
+    <button data-view="inbox">📥 Inbox</button>
+    <button data-view="platforms">📡 Messages by platform</button>
+  </nav>
   <div class="banner" id="banner" role="alert">⚠ Can't reach Kiakia. Retrying in <b id="retryIn">10</b>s… <button id="retryNow">Retry now</button></div>
 
-  <section class="stats" id="stats" aria-label="Dashboard numbers"></section>
-
-  <div class="panes" id="panes">
-    <section class="card list" aria-label="Conversations">
-      <div class="tabs" role="tablist">
-        <button data-tab="waiting" aria-pressed="true">⏳ Waiting <span class="count" id="cntWaiting"></span></button>
-        <button data-tab="all" aria-pressed="false">All</button>
-        <button data-tab="answered" aria-pressed="false">Answered</button>
+  <!-- DASHBOARD -->
+  <section class="view active" id="view-dash">
+    <div class="period">Period:
+      <div class="seg" id="dashPeriod">
+        <button data-p="today">Today</button><button data-p="7d" aria-pressed="true">Last 7 days</button><button data-p="30d">Last 30 days</button><button data-p="all">All time</button>
       </div>
-      <div class="filters">
-        <input id="search" type="search" placeholder="Search name or @username  ( / )" aria-label="Search" maxlength="100">
-        <select id="channel" aria-label="Channel">
-          <option value="">All channels</option><option value="telegram">Telegram</option>
-          <option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option>
-        </select>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card box"><h3>⏳ Waiting for a reply <button class="link" data-goto="inbox">Open inbox →</button></h3><div id="dashWaiting"></div></div>
+      <div>
+        <div class="card box"><h3>📡 Messages by platform <button class="link" data-goto="platforms">Details →</button></h3><div id="dashPlatforms"></div></div>
+        <div class="card box" style="margin-top:14px"><h3>🏷️ What customers write about</h3><div class="cats" id="dashCats"></div></div>
       </div>
-      <div class="rows" id="rows"></div>
-    </section>
+    </div>
+  </section>
 
-    <section class="card chat" id="chat" aria-label="Conversation"></section>
-  </div>
+  <!-- INBOX -->
+  <section class="view" id="view-inbox">
+    <div class="panes" id="panes">
+      <section class="card list" aria-label="Conversations">
+        <div class="tabs">
+          <button data-tab="waiting" aria-pressed="true">⏳ Waiting <span id="cntWaiting"></span></button>
+          <button data-tab="answered" aria-pressed="false">↩ Answered</button>
+          <button data-tab="resolved" aria-pressed="false">✓ Resolved</button>
+          <button data-tab="all" aria-pressed="false">All</button>
+        </div>
+        <div class="filters">
+          <div class="frow"><input id="search" type="search" placeholder="Search name or @username  ( / )" aria-label="Search" maxlength="100"></div>
+          <div class="frow" id="pfFilter" aria-label="Filter by platform"></div>
+          <div class="frow">
+            <select id="datePreset" aria-label="Date">
+              <option value="all">📅 Any time</option><option value="today">Today</option><option value="yesterday">Yesterday</option>
+              <option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="custom">Custom…</option>
+            </select>
+            <span id="customDates" hidden><input type="date" id="dFrom" aria-label="From"> – <input type="date" id="dTo" aria-label="To"></span>
+            <select id="catFilter" aria-label="Category">
+              <option value="">🏷️ Any category</option><option value="enquiry">Enquiry</option><option value="order">Order</option>
+              <option value="complaint">Complaint</option><option value="other">Other</option><option value="none">Uncategorised</option>
+            </select>
+          </div>
+        </div>
+        <div class="rows" id="rows"></div>
+      </section>
+      <section class="card chat" id="chat" aria-label="Conversation"></section>
+    </div>
+  </section>
 
-  <section class="card kinds" id="kinds" aria-label="Messages by kind"></section>
-  <p class="hint">Mockup with fake data shaped exactly like <code>openapi.yaml</code> responses. Nothing here talks to a real API or sends real messages.</p>
+  <!-- MESSAGES BY PLATFORM -->
+  <section class="view" id="view-platforms">
+    <div class="period">Period:
+      <div class="seg" id="pPeriod"><button data-p="today">Today</button><button data-p="7d" aria-pressed="true">Last 7 days</button><button data-p="30d">Last 30 days</button><button data-p="all">All time</button></div>
+      <span>· Click a platform to filter the messages below.</span>
+    </div>
+    <div class="pcards" id="pcards"></div>
+    <div class="card"><div class="box"><h3 id="mlistTitle">All messages</h3></div><div id="mlist"></div></div>
+  </section>
+
+  <p class="hint">Mockup with fake data shaped like <code>openapi.yaml</code> (including the additions proposed in ADR 0006). Nothing here talks to a real API or sends real messages.</p>
 </div>
 <div class="toast" id="toast" role="status"></div>
 
 <script>
-const MIN = 60 * 1000, NOW = Date.now();
-const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
+const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR, NOW = Date.now();
+const iso = (ago) => new Date(NOW - ago).toISOString();
 
-/* ---- Fake data, in the contract's shapes (ConversationSummary, Message, InboxStats) ---- */
-const conversations = [
-  { id: 1, channel: "telegram", contact: { id: 1, displayName: "Ada Test", username: "ada_test" }, status: "waiting",
-    waitingSince: iso(65*MIN), lastMessageAt: iso(60*MIN), lastReplyAt: null, lastMessagePreview: "Do you have it in red?", unansweredCount: 2 },
-  { id: 3, channel: "telegram", contact: { id: 3, displayName: "Chidi", username: "chidi" }, status: "waiting",
-    waitingSince: iso(12*MIN), lastMessageAt: iso(12*MIN), lastReplyAt: null, lastMessagePreview: "[voice]", unansweredCount: 1 },
-  { id: 6, channel: "whatsapp", contact: { id: 6, displayName: "Tunde", username: null }, status: "waiting",
-    waitingSince: iso(7*MIN), lastMessageAt: iso(7*MIN), lastReplyAt: null, lastMessagePreview: "Can you deliver to Ikeja?", unansweredCount: 1 },
-  { id: 4, channel: "telegram", contact: { id: 4, displayName: "100% Real_Deal", username: null }, status: "waiting",
-    waitingSince: iso(2*MIN), lastMessageAt: iso(2*MIN), lastReplyAt: null, lastMessagePreview: "price?", unansweredCount: 1 },
-  { id: 2, channel: "telegram", contact: { id: 2, displayName: "Bayo", username: null }, status: "answered",
-    waitingSince: null, lastMessageAt: iso(45*MIN), lastReplyAt: iso(45*MIN), lastMessagePreview: "Are you open today?", unansweredCount: 0 },
-  { id: 5, channel: "instagram", contact: { id: 5, displayName: "Ngozi", username: "ngozi.styles" }, status: "answered",
-    waitingSince: null, lastMessageAt: iso(3*60*MIN), lastReplyAt: iso(3*60*MIN), lastMessagePreview: "Thank you!", unansweredCount: 0 },
-];
-const messages = {
-  1: [ { id: 11, direction: "in", kind: "text", body: "Hello, how much is the blue bag?", hasMedia: false, sentAt: iso(65*MIN) },
-       { id: 12, direction: "in", kind: "text", body: "Do you have it in red?", hasMedia: false, sentAt: iso(60*MIN) } ],
-  3: [ { id: 31, direction: "in", kind: "voice", body: null, hasMedia: true, sentAt: iso(12*MIN) } ],
-  6: [ { id: 61, direction: "in", kind: "text", body: "Can you deliver to Ikeja?", hasMedia: false, sentAt: iso(7*MIN) } ],
-  4: [ { id: 41, direction: "in", kind: "image", body: "price?", hasMedia: true, sentAt: iso(2*MIN) } ],
-  2: [ { id: 21, direction: "in", kind: "text", body: "Are you open today?", hasMedia: false, sentAt: iso(50*MIN) },
-       { id: 22, direction: "out", kind: "text", body: "Yes, until 6pm!", hasMedia: false, sentAt: iso(45*MIN) } ],
-  5: [ { id: 51, direction: "out", kind: "text", body: "Your order is on its way 🚚", hasMedia: false, sentAt: iso(3*60*MIN+60000) },
-       { id: 52, direction: "in", kind: "text", body: "Thank you!", hasMedia: false, sentAt: iso(3*60*MIN) } ],
+/* ---------- Platforms: unique colour + simple icon (drawn for Kiakia, not official logos) ---------- */
+const PF = {
+  telegram:  { label: "Telegram",  svg: '<path d="M21 4 3 11l6 2 2 6 3-4 5 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m9 13 12-9" stroke="currentColor" stroke-width="2"/>' },
+  whatsapp:  { label: "WhatsApp",  svg: '<path d="M4 20l1.3-4A8 8 0 1 1 8.6 19z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 8.5c0 3 3 6.5 6.5 6.5l1-1.6-2-1-1 1c-1.2-.5-2.4-1.7-2.9-2.9l1-1-1-2z" fill="currentColor"/>' },
+  instagram: { label: "Instagram", svg: '<rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.3" cy="6.7" r="1.3" fill="currentColor"/>' },
+  messenger: { label: "Messenger", svg: '<path d="M12 3C7 3 3 6.7 3 11.3c0 2.6 1.3 4.9 3.3 6.4V21l3-1.7c.9.3 1.8.4 2.7.4 5 0 9-3.7 9-8.4S17 3 12 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m7 13.5 3.5-3.7 2.2 2.2 4.3-2.5-3.6 3.8-2.2-2.2z" fill="currentColor"/>' },
+  tiktok:    { label: "TikTok",    svg: '<path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M14 3c.5 2.6 2.3 4.3 5 4.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>' },
+  email:     { label: "Email",     svg: '<rect x="3" y="5.5" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="2"/>' },
 };
-const kinds = { text: 40, voice: 8, image: 5, sticker: 2 };
+const pfIcon = (ch, size = "") => `<span class="pf ${size} ${ch}" style="background:var(--${ch})" title="${PF[ch].label}" aria-label="${PF[ch].label}" role="img"><svg viewBox="0 0 24 24" aria-hidden="true">${PF[ch].svg}</svg></span>`;
+const pfPill = (ch) => `<span class="pill" style="--c:var(--${ch})">${pfIcon(ch, "sm")}${PF[ch].label}</span>`;
 
-/* ---- State ---- */
+/* ---------- Fake data in the contract's shapes (+ ADR 0006 fields: category, resolvedAt, channel on messages) ---------- */
+const C = (id, channel, name, username, category, msgs, resolvedAgo = null) => ({ id, channel, contact: { id, displayName: name, username }, category, msgs, resolvedAt: resolvedAgo === null ? null : iso(resolvedAgo) });
+const m = (dir, ago, body, kind = "text") => ({ direction: dir, sentAt: iso(ago), body, kind, hasMedia: kind !== "text" });
+const conversations = [
+  C(1, "telegram", "Ada Test", "ada_test", "enquiry", [m("in", 65*MIN, "Hello, how much is the blue bag?"), m("in", 60*MIN, "Do you have it in red?")]),
+  C(3, "telegram", "Chidi", "chidi", null, [m("in", 12*MIN, null, "voice")]),
+  C(6, "whatsapp", "Tunde", null, "order", [m("in", 7*MIN, "Can you deliver 2 bags to Ikeja tomorrow?")]),
+  C(8, "tiktok", "Musa", "musa.styles", "enquiry", [m("in", 25*MIN, "Saw your video! Is the gold one still available?")]),
+  C(4, "telegram", "100% Real_Deal", null, null, [m("in", 2*MIN, "price?", "image")]),
+  C(2, "telegram", "Bayo", null, "enquiry", [m("in", 50*MIN, "Are you open today?"), m("out", 44*MIN, "Yes, until 6pm!")]),
+  C(5, "instagram", "Ngozi", "ngozi.styles", "order", [m("in", 3*HOUR+9*MIN, "I'll take the black one 🖤"), m("out", 3*HOUR, "Lovely! Sending the payment details now.")]),
+  C(7, "messenger", "Kemi", null, "complaint", [m("in", 26*HOUR, "My order arrived damaged 😞"), m("out", 25*HOUR, "So sorry! We'll replace it today."), m("in", 24*HOUR, "Thank you!")], 23*HOUR),
+  C(9, "email", "Funke Ade", "funke@example.com", "order", [m("in", 3*DAY+2*HOUR, "Can I get an invoice for my order #1042?"), m("out", 3*DAY+HOUR, "Attached, thank you!")]),
+  C(10, "whatsapp", "Emeka", null, "complaint", [m("in", 6*DAY+3*HOUR, "Delivery was late again."), m("out", 6*DAY+2*HOUR+40*MIN, "Apologies, we've changed courier.")]),
+  C(11, "instagram", "Zainab", "zainab.k", "enquiry", [m("in", 12*DAY, "Do you ship to Abuja?"), m("out", 12*DAY-30*MIN, "Yes, 2–3 days!"), m("in", 12*DAY-25*MIN, "Great, thanks")], 12*DAY-20*MIN),
+];
+let nextMsgId = 1000;
+conversations.forEach((c) => c.msgs.forEach((x) => { x.id = nextMsgId++; x.conversationId = c.id; x.channel = c.channel; }));
+
+/* Derived fields exactly as defined in ADR 0006 */
+function derive(c) {
+  const ins = c.msgs.filter((x) => x.direction === "in"), outs = c.msgs.filter((x) => x.direction === "out");
+  const lastOut = outs.length ? outs[outs.length - 1].sentAt : null;
+  const fence = [lastOut, c.resolvedAt].filter(Boolean).sort().pop() ?? null;   // a reply or "resolved" closes earlier messages
+  const unanswered = ins.filter((x) => !fence || x.sentAt > fence);
+  c.status = unanswered.length ? "waiting" : (c.resolvedAt && (!lastOut || c.resolvedAt >= lastOut) ? "resolved" : "answered");
+  c.waitingSince = unanswered.length ? unanswered[0].sentAt : null;
+  c.unansweredCount = unanswered.length;
+  c.lastMessageAt = c.msgs[c.msgs.length - 1].sentAt;
+  c.lastReplyAt = lastOut;
+  const lastIn = ins[ins.length - 1];
+  c.lastMessagePreview = lastIn ? (lastIn.body ?? `[${lastIn.kind}]`) : null;
+  return c;
+}
+conversations.forEach(derive);
+
+/* ---------- State ---------- */
 let tab = "waiting", selected = null, demo = "normal", lastUpdate = Date.now();
-const drafts = {}; // conversationId -> { text, key }: one Idempotency-Key per draft (ADR 0004)
+let dashPeriod = "7d", pPeriod = "7d", pChannel = null;
+const pfOn = new Set(Object.keys(PF));
+const drafts = {};
 
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-const waited = (isoTime) => Math.max(0, Date.now() - new Date(isoTime).getTime());
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+const age = (t) => Math.max(0, Date.now() - new Date(t).getTime());
 const heat = (ms) => ms < 5*MIN ? "g" : ms < 15*MIN ? "a" : "r";
-const heatWord = { g: "just in", a: "waiting a while", r: "waiting too long" };
-function fmt(ms) {
-  const m = Math.floor(ms / MIN);
-  if (m < 1) return Math.floor(ms / 1000) + "s";
-  if (m < 60) return m + " min";
-  const h = Math.floor(m / 60);
-  return h < 48 ? `${h}h ${String(m % 60).padStart(2, "0")}m` : Math.floor(h / 24) + " days";
+function dur(ms) {
+  const mins = Math.floor(ms / MIN);
+  if (mins < 1) return "less than a minute";
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h} h ${mins % 60} min`;
+  const d = Math.floor(h / 24); return d === 1 ? "1 day" : `${d} days`;
 }
-const clock = (isoTime) => new Date(isoTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const preview = (c) => c.lastMessagePreview === "[voice]" ? "🎤 Voice note" : c.lastMessagePreview === "[image]" ? "📷 Photo" : (c.lastMessagePreview ?? "");
-const chanLabel = { telegram: "Telegram", whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger", tiktok: "TikTok", email: "Email" };
+function when(t) {
+  const d = new Date(t), today = new Date(); const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === today.toDateString()) return `today ${time}`;
+  const y = new Date(today); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return `yesterday ${time}`;
+  return d.toLocaleDateString([], { day: "numeric", month: "short" }) + " " + time;
+}
+const ago = (t) => `${dur(age(t))} ago`;
+const kindLabel = { voice: "🎤 Voice note", image: "📷 Photo", video: "🎬 Video", document: "📎 File", sticker: "🙂 Sticker" };
+const preview = (c) => c.lastMessagePreview?.startsWith("[") ? kindLabel[c.lastMessagePreview.slice(1, -1)] ?? c.lastMessagePreview : (c.lastMessagePreview ?? "");
+const catLabel = { enquiry: "❓ Enquiry", order: "🛍️ Order", complaint: "⚠️ Complaint", other: "💬 Other" };
 
-/* ---- Render: stats ---- */
-function renderStats() {
-  const w = conversations.filter((c) => c.status === "waiting");
-  const oldest = w.reduce((a, c) => (!a || c.waitingSince < a ? c.waitingSince : a), null);
-  const msgs = Object.values(messages).reduce((n, l) => n + l.length, 0) + 43;
-  if (demo === "loading") { $("stats").innerHTML = '<div class="card skel"></div>'.repeat(4); return; }
-  const shownWaiting = demo === "empty" ? 0 : w.length;
-  $("stats").innerHTML = `
-    <div class="card stat ${shownWaiting ? "hot" : ""}"><b>${shownWaiting}</b><small>waiting for a reply</small></div>
-    <div class="card stat"><b data-since="${demo === "empty" || !oldest ? "" : oldest}">${demo === "empty" || !oldest ? "–" : fmt(waited(oldest))}</b><small>${demo === "empty" || !oldest ? "nobody waiting 🎉" : "longest wait"}</small></div>
-    <div class="card stat"><b>${conversations.length}</b><small>conversations</small></div>
-    <div class="card stat"><b>${msgs}</b><small>messages</small></div>`;
-  $("cntWaiting").textContent = shownWaiting;
-  const total = Object.values(kinds).reduce((a, b) => a + b, 0);
-  const colors = { text: "var(--brand)", voice: "var(--accent)", image: "#60A5FA", sticker: "#A78BFA" };
-  $("kinds").innerHTML = `<b>Messages by kind</b><div class="bar">${Object.entries(kinds).map(([k, n]) =>
-    `<i style="width:${100*n/total}%;background:${colors[k]}" title="${k}: ${n}"></i>`).join("")}</div>
-    <div class="legend">${Object.entries(kinds).map(([k, n]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${colors[k]}"></i> ${k} ${n}</span>`).join("")}</div>`;
+/* Clear time wording (feedback: "make the minutes more explanatory") */
+function timeLine(c) {
+  if (c.status === "waiting") {
+    const ms = age(c.waitingSince);
+    return { cls: heat(ms), text: `📩 Received ${ago(c.waitingSince)} · no reply yet`,
+      long: `Waiting ${dur(ms)} for a reply: the first unanswered message arrived ${when(c.waitingSince)}.` };
+  }
+  if (c.status === "resolved") return { cls: "done", text: `✓ Resolved ${ago(c.resolvedAt)}`, long: `Marked resolved ${when(c.resolvedAt)}. If the customer writes again, it comes back to Waiting.` };
+  return { cls: "done", text: `↩ You replied ${ago(c.lastReplyAt)}`, long: `Answered: your last reply was sent ${when(c.lastReplyAt)}.` };
 }
 
-/* ---- Render: list (GET /v1/conversations with status, q, channel, sort) ---- */
+/* ---------- Periods / date filter (ADR 0006: from/to) ---------- */
+function range(p, fromStr, toStr) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  if (p === "today") return [start.getTime(), Infinity];
+  if (p === "yesterday") return [start.getTime() - DAY, start.getTime()];
+  if (p === "7d") return [NOW - 7*DAY, Infinity];
+  if (p === "30d") return [NOW - 30*DAY, Infinity];
+  if (p === "custom") return [fromStr ? new Date(fromStr).getTime() : -Infinity, toStr ? new Date(toStr).getTime() + DAY : Infinity];
+  return [-Infinity, Infinity];
+}
+const inRange = (t, [a, b]) => { const x = new Date(t).getTime(); return x >= a && x < b; };
+
+/* ---------- Stats exactly as defined in ADR 0006 ---------- */
+function stats(p, channel = null) {
+  const r = range(p);
+  const msgs = conversations.flatMap((c) => c.msgs).filter((x) => inRange(x.sentAt, r) && (!channel || x.channel === channel));
+  const convs = conversations.filter((c) => c.msgs.some((x) => x.direction === "in" && inRange(x.sentAt, r)) && (!channel || c.channel === channel));
+  const answered = convs.filter((c) => c.status !== "waiting").length;
+  const firsts = [];
+  convs.forEach((c) => { let open = null; c.msgs.forEach((x) => {
+    if (x.direction === "in" && !open) open = x.sentAt;
+    if (x.direction === "out" && open) { if (inRange(x.sentAt, r)) firsts.push(new Date(x.sentAt) - new Date(open)); open = null; } }); });
+  firsts.sort((a, b) => a - b);
+  const median = firsts.length ? firsts[Math.floor((firsts.length - 1) / 2)] : null;
+  return { messages: msgs.length, received: msgs.filter((x) => x.direction === "in").length, conversations: convs.length,
+    waiting: convs.filter((c) => c.status === "waiting").length, responseRate: convs.length ? answered / convs.length : null, median };
+}
+
+/* ---------- Render: Dashboard ---------- */
+function renderDash() {
+  if (demo === "loading") { $("kpis").innerHTML = '<div class="card skel"></div>'.repeat(5); $("dashWaiting").innerHTML = '<div class="skel"></div>'.repeat(3); return; }
+  const s = stats(dashPeriod);
+  const waitingAll = demo === "empty" ? [] : conversations.filter((c) => c.status === "waiting").sort((a, b) => a.waitingSince.localeCompare(b.waitingSince));
+  const oldest = waitingAll[0];
+  const rr = s.responseRate === null ? null : Math.round(s.responseRate * 100);
+  $("kpis").innerHTML = `
+    <div class="card kpi ${waitingAll.length ? "hot" : ""}"><b>${waitingAll.length}</b><small>customers waiting for a reply right now</small></div>
+    <div class="card kpi"><b data-dur="${oldest?.waitingSince ?? ""}">${oldest ? dur(age(oldest.waitingSince)) : "–"}</b>
+      <small>${oldest ? `longest wait: ${esc(oldest.contact.displayName)}, since ${when(oldest.waitingSince)}` : "nobody is waiting 🎉"}</small></div>
+    <div class="card kpi"><span class="ring" style="--p:${rr ?? 0}" aria-hidden="true"><i>${rr === null ? "" : rr >= 80 ? "👍" : rr >= 50 ? "🙂" : "⚠️"}</i></span><b>${rr ?? "–"}${rr === null ? "" : "%"}</b><small>response rate: chats answered or resolved</small></div>
+    <div class="card kpi"><b>${s.median === null ? "–" : dur(s.median)}</b><small>typical time to your first reply (median)</small></div>
+    <button class="card kpi" data-goto="platforms" title="Open the messages-by-platform dashboard"><b>${s.received}</b><small>messages received · by platform →</small></button>`;
+  $("dashWaiting").innerHTML = waitingAll.length ? waitingAll.slice(0, 6).map(rowHtml).join("")
+    : `<div class="empty"><div class="big">🎉</div><b>Nobody is waiting.</b><br>Every customer has a reply.</div>`;
+  const per = Object.keys(PF).map((ch) => ({ ch, n: stats(dashPeriod, ch).received })), max = Math.max(1, ...per.map((x) => x.n));
+  $("dashPlatforms").innerHTML = per.map(({ ch, n }) => `<button class="hbar" data-platform="${ch}">${pfPill(ch)}
+    <span class="track"><span class="fill" style="display:block;width:${100*n/max}%;background:var(--${ch})"></span></span><span>${n}</span></button>`).join("");
+  const counts = { enquiry: 0, order: 0, complaint: 0, other: 0, none: 0 };
+  conversations.filter((c) => c.msgs.some((x) => inRange(x.sentAt, range(dashPeriod)))).forEach((c) => counts[c.category ?? "none"]++);
+  $("dashCats").innerHTML = Object.entries(counts).map(([k, n]) => `<span class="cat">${k === "none" ? "Uncategorised" : catLabel[k]} <b>${n}</b></span>`).join("");
+}
+
+/* ---------- Render: Inbox list (GET /v1/conversations: status, channel, from/to, category, q, sort) ---------- */
+function renderPfFilter() {
+  $("pfFilter").innerHTML = '<span class="hint">Platforms:</span>' + Object.keys(PF).map((ch) =>
+    `<button class="chipbtn" style="--c:var(--${ch})" data-pf="${ch}" aria-pressed="${pfOn.has(ch)}" title="${PF[ch].label}">${pfIcon(ch)}</button>`).join("");
+}
 function filtered() {
-  const q = $("search").value.trim().toLowerCase(), ch = $("channel").value;
-  let list = conversations.filter((c) => (tab === "all" || c.status === tab) && (!ch || c.channel === ch) &&
+  const q = $("search").value.trim().toLowerCase(), cat = $("catFilter").value;
+  const r = range($("datePreset").value, $("dFrom").value, $("dTo").value);
+  let list = conversations.filter((c) => (tab === "all" || c.status === tab) && pfOn.has(c.channel) && inRange(c.lastMessageAt, r) &&
+    (!cat || (cat === "none" ? !c.category : c.category === cat)) &&
     (!q || c.contact.displayName.toLowerCase().includes(q) || (c.contact.username ?? "").toLowerCase().includes(q)));
-  if (tab === "waiting") list.sort((a, b) => a.waitingSince.localeCompare(b.waitingSince)); // sort=longestWaiting
-  else list.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));                // sort=recent
+  if (tab === "waiting") list.sort((a, b) => a.waitingSince.localeCompare(b.waitingSince));
+  else list.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
   return list;
 }
+function rowHtml(c) {
+  const t = timeLine(c);
+  return `<button class="row" data-id="${c.id}" aria-current="${c.id === selected}" title="${esc(t.long)}">
+    ${pfIcon(c.channel, "lg")}
+    <span style="min-width:0"><span class="name">${esc(c.contact.displayName)} ${c.contact.username ? `<small>@${esc(c.contact.username)}</small>` : ""}</span>
+      <span class="preview" style="display:block">${esc(preview(c))}</span>
+      <span class="when ${t.cls}" ${c.status === "waiting" ? `data-when="${c.waitingSince}"` : ""} style="display:block">${t.text}</span></span>
+    <span class="side">${c.unansweredCount ? `<span class="badge">${c.unansweredCount} new</span><br>` : ""}${c.category ? `<span class="catTag">${catLabel[c.category]}</span>` : ""}</span>
+  </button>`;
+}
 function renderRows() {
+  $("cntWaiting").textContent = demo === "empty" ? 0 : conversations.filter((c) => c.status === "waiting").length;
   if (demo === "loading") { $("rows").innerHTML = '<div class="skel"></div>'.repeat(5); return; }
   const list = demo === "empty" && tab === "waiting" ? [] : filtered();
   if (!list.length) {
-    const q = $("search").value.trim();
-    $("rows").innerHTML = q
-      ? `<div class="empty"><div class="big">🔍</div>No chats match "<b>${esc(q)}</b>".<br><button class="more" onclick="clearSearch()">Clear the search</button></div>`
-      : tab === "waiting"
-        ? `<div class="empty"><div class="big">🎉</div><b>Nobody is waiting.</b><br>Every customer has a reply.</div>`
-        : `<div class="empty"><div class="big">📭</div>No conversations here yet.</div>`;
+    const filteredOut = $("search").value || $("catFilter").value || $("datePreset").value !== "all" || pfOn.size < Object.keys(PF).length;
+    $("rows").innerHTML = filteredOut
+      ? `<div class="empty"><div class="big">🔍</div>No chats match these filters.<br><button class="btn" id="clearFilters" style="margin-top:8px">Clear all filters</button></div>`
+      : tab === "waiting" ? `<div class="empty"><div class="big">🎉</div><b>Nobody is waiting.</b><br>Every customer has a reply.</div>`
+      : `<div class="empty"><div class="big">📭</div>No conversations here yet.</div>`;
     return;
   }
-  $("rows").innerHTML = list.map((c) => {
-    const w = c.status === "waiting", h = w ? heat(waited(c.waitingSince)) : "done";
-    return `<button class="row" data-id="${c.id}" aria-current="${c.id === selected}" aria-label="${esc(c.contact.displayName)}${w ? ", " + heatWord[h] : ", answered"}">
-      <span class="heat ${h}" aria-hidden="true"></span>
-      <span style="min-width:0"><span class="name">${esc(c.contact.displayName)} ${c.contact.username ? `<small>@${esc(c.contact.username)}</small>` : ""}</span>
-        <span class="preview">${esc(preview(c))}</span></span>
-      <span class="meta">${w ? `<span class="timer ${h}" data-since="${c.waitingSince}">⏳ ${fmt(waited(c.waitingSince))}</span><br><span class="badge">${c.unansweredCount} new</span>`
-        : `✅ answered<br><span class="chan">${chanLabel[c.channel]}</span>`}</span>
-    </button>`;
-  }).join("") + (list.length > 5 ? '<button class="more">Load more</button>' : "");
+  $("rows").innerHTML = list.map(rowHtml).join("");
 }
 
-/* ---- Render: conversation (GET /v1/conversations/{id} + /messages) ---- */
+/* ---------- Render: conversation (GET /v1/conversations/{id}, /messages; PATCH resolve + category) ---------- */
 function renderChat() {
   const c = conversations.find((x) => x.id === selected);
-  if (!c) {
-    $("chat").innerHTML = `<div class="empty"><div class="big">💬</div><b>Pick a conversation</b><br>Start with the longest-waiting customer at the top of the list.</div>`;
-    return;
-  }
+  if (!c) { $("chat").innerHTML = `<div class="empty"><div class="big">💬</div><b>Pick a conversation</b><br>Start with the longest-waiting customer at the top.</div>`; return; }
   const d = drafts[c.id] ?? (drafts[c.id] = { text: "", key: crypto.randomUUID() });
-  const w = c.status === "waiting";
-  // Bubble HTML is built on one line: the bubble keeps whitespace (pre-wrap), so template spaces would show.
-  const bubbles = [...(messages[c.id] ?? [])].sort((a, b) => a.sentAt.localeCompare(b.sentAt)).map((m) => {
-    const media = m.hasMedia ? `<span class="media">${m.body ? "<br>" : ""}${m.kind === "voice" ? "🎤 Voice note" : m.kind === "image" ? "📷 Photo" : "📎 File"}</span>` : "";
-    const time = `<span class="t">${clock(m.sentAt)}${m.direction === "out" ? (m.pending ? " · sending…" : " · ✓ sent") : ""}</span>`;
-    return `<div class="bubble ${m.direction}${m.pending ? " sending" : ""}">${m.body ? esc(m.body) : ""}${media}${time}</div>`;
+  const t = timeLine(c);
+  const bubbles = c.msgs.map((x) => {
+    const media = x.hasMedia ? `<span class="media">${x.body ? "<br>" : ""}${kindLabel[x.kind] ?? "📎 File"}</span>` : "";
+    const meta = `<span class="t">${pfIcon(x.channel, "sm")} ${when(x.sentAt)}${x.direction === "out" ? (x.pending ? " · sending…" : " · ✓ sent") : ""}</span>`;
+    return `<div class="bubble ${x.direction}${x.pending ? " sending" : ""}">${x.body ? esc(x.body) : ""}${media}${meta}</div>`;
   }).join("");
   $("chat").innerHTML = `
     <div class="chat-head">
-      <button class="back" onclick="back()" aria-label="Back to the list">←</button>
-      <div><div class="who">${esc(c.contact.displayName)}</div>
-        <div class="sub">${c.contact.username ? "@" + esc(c.contact.username) + " · " : ""}${chanLabel[c.channel]}</div></div>
-      <div class="right">${w ? `<span class="timer ${heat(waited(c.waitingSince))}" data-since="${c.waitingSince}">⏳ ${fmt(waited(c.waitingSince))}</span><br><small>${c.unansweredCount} unanswered</small>`
-        : `✅ Answered<br><small>replied ${clock(c.lastReplyAt)}</small>`}</div>
+      <button class="back" id="backBtn" aria-label="Back to the list">←</button>
+      ${pfIcon(c.channel, "lg")}
+      <div><div class="who">${esc(c.contact.displayName)}</div><div class="sub">${c.contact.username ? "@" + esc(c.contact.username) + " ·" : ""} ${pfPill(c.channel)}</div></div>
+      <div class="actions">
+        <select id="catSel" aria-label="Category"><option value="">🏷️ Category…</option>
+          ${Object.entries(catLabel).map(([k, v]) => `<option value="${k}" ${c.category === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+        <button class="btn ${c.status === "resolved" ? "" : "ok"}" id="resolveBtn">${c.status === "resolved" ? "↺ Reopen" : "✓ Mark resolved"}</button>
+      </div>
     </div>
+    <div class="statusline ${t.cls}">${t.long}</div>
     <div class="bubbles" id="bubbles">${bubbles}</div>
     <div class="notice" id="notice"></div>
     <form class="composer" id="composer" novalidate>
-      <label for="reply" class="hint">Reply to ${esc(c.contact.displayName)} (Enter sends · Shift+Enter = new line)</label>
+      <label for="reply" class="hint">Reply via ${PF[c.channel].label} (Enter sends · Shift+Enter = new line)</label>
       <textarea id="reply" maxlength="4200" placeholder="Type a reply…" aria-describedby="replyErr">${esc(d.text)}</textarea>
+      <div class="line"><span class="err" id="replyErr" aria-live="polite"></span><span class="counter" id="counter">${d.text.length}/4096</span></div>
       <div class="line">
-        <span class="err" id="replyErr" aria-live="polite"></span>
-        <span class="counter" id="counter">${d.text.length}/4096</span>
-      </div>
-      <div class="line">
-        <label class="sim">🎬 Simulate:
-          <select id="sim">
-            <option value="ok">Normal send</option>
-            <option value="drop">Wi-Fi drops, app retries (same key)</option>
-            <option value="blocked">Telegram refuses (bot blocked)</option>
-            <option value="unknown">No answer from Telegram (maybe delivered)</option>
-          </select></label>
+        <label class="sim">🎬 Simulate: <select id="sim"><option value="ok">Normal send</option><option value="drop">Wi-Fi drops, app retries (same key)</option>
+          <option value="blocked">Platform refuses (bot blocked)</option><option value="unknown">No answer (maybe delivered)</option></select></label>
         <span class="hint" title="One Idempotency-Key per draft, reused on retries (ADR 0004)">🔑 ${d.key.slice(0, 8)}…</span>
         <button class="send" id="send" type="submit">Send ➤</button>
       </div>
     </form>`;
   const b = $("bubbles"); b.scrollTop = b.scrollHeight;
-  $("reply").addEventListener("input", (e) => { d.text = e.target.value; $("counter").textContent = `${d.text.length}/4096`;
-    $("counter").style.color = d.text.length > 4096 ? "var(--red)" : ""; setError(""); });
+  $("backBtn").onclick = () => $("panes").classList.remove("show-chat");
+  $("reply").addEventListener("input", (e) => { d.text = e.target.value; $("counter").textContent = `${d.text.length}/4096`; $("counter").style.color = d.text.length > 4096 ? "var(--red)" : ""; setError(""); });
   $("reply").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
   $("composer").addEventListener("submit", (e) => { e.preventDefault(); send(); });
+  $("catSel").onchange = (e) => { c.category = e.target.value || null; toast(c.category ? `Labelled as ${catLabel[c.category]}` : "Label removed"); renderAll(); };
+  $("resolveBtn").onclick = () => {
+    if (c.status === "resolved") { c.resolvedAt = null; toast("Reopened"); }
+    else { c.resolvedAt = new Date().toISOString(); toast(`✓ ${c.contact.displayName} marked resolved. If they write again, they'll come back to Waiting.`); }
+    derive(c); renderAll(); if (!conversations.some((x) => x.status === "waiting")) celebrate();
+  };
 }
-
-function setError(msg) {
-  const r = $("reply"); if (!r) return;
-  $("replyErr").textContent = msg ? "⚠ " + msg : "";
-  r.setAttribute("aria-invalid", msg ? "true" : "false");
-}
+function setError(msg) { const r = $("reply"); if (!r) return; $("replyErr").textContent = msg ? "⚠ " + msg : ""; r.setAttribute("aria-invalid", msg ? "true" : "false"); }
 function notice(kind, msg, offerNewKey = false) {
   const n = $("notice"); n.className = "notice show " + kind; n.textContent = msg;
-  if (offerNewKey) {
-    const b = document.createElement("button"); b.type = "button";
-    b.textContent = "I checked: it didn't arrive. Send as a new message";
+  if (offerNewKey) { const b = document.createElement("button"); b.type = "button"; b.textContent = "I checked: it didn't arrive. Send as a new message";
     b.onclick = () => { const d = drafts[selected]; d.key = crypto.randomUUID(); d.locked = false; renderChat(); toast("New Idempotency-Key created. You can send now."); };
-    n.appendChild(document.createElement("br")); n.appendChild(b);
-  }
+    n.appendChild(document.createElement("br")); n.appendChild(b); }
 }
 
-/* ---- Sending (POST /v1/conversations/{id}/replies), every outcome from the contract ---- */
+/* ---------- Sending (POST /replies) ---------- */
 async function send() {
   const c = conversations.find((x) => x.id === selected), d = drafts[c.id], text = d.text.trim(), sim = $("sim").value;
-  // These mirror the API's 422 Problem Details messages exactly.
   if (!text) return setError("text: must not be empty or only spaces");
   if (text.length > 4096) return setError("text: must be at most 4096 characters");
-  if (d.locked) {
-    // Same as the real API: retrying a key whose delivery is unconfirmed returns 409, never a duplicate.
-    return notice("warn", "This reply may already have been delivered, so Kiakia won't send it again with the same key (API: 409). Check the chat on your phone first.", true);
-  }
-  if (c.channel !== "telegram") return notice("bad", `Telegram is the only channel Kiakia can reply on today. (API: 502 "Replying on ${c.channel} is not supported yet.")`);
-
-  $("send").disabled = true; $("send").textContent = "Sending…"; $("reply").readOnly = true;
-  const pending = { id: Date.now(), direction: "out", kind: "text", body: text, hasMedia: false, sentAt: new Date().toISOString(), pending: true };
-  messages[c.id].push(pending); renderBubblesOnly();
+  if (d.locked) return notice("warn", "This reply may already have been delivered, so Kiakia won't send it again with the same key (API: 409). Check the chat on your phone first.", true);
+  if (c.channel !== "telegram") return notice("bad", `Kiakia can only reply on Telegram today. (API: 502 "Replying on ${c.channel} is not supported yet.")`);
+  $("send").disabled = true; $("send").textContent = "Sending…";
+  const pending = { id: nextMsgId++, conversationId: c.id, channel: c.channel, direction: "out", kind: "text", body: text, hasMedia: false, sentAt: new Date().toISOString(), pending: true };
+  c.msgs.push(pending); renderChat(); $("send").disabled = true; $("send").textContent = "Sending…";
   await new Promise((r) => setTimeout(r, 900));
-
-  if (sim === "blocked") {
-    messages[c.id] = messages[c.id].filter((m) => m !== pending);
-    return failed(c, "bad", "Telegram refused: bot was blocked by the user. Nothing was sent. Your draft is kept. (API: 502 channel-error)");
+  if (sim === "blocked" || sim === "unknown") {
+    c.msgs = c.msgs.filter((x) => x !== pending);
+    if (sim === "unknown") d.locked = true;
+    renderChat();
+    return sim === "blocked"
+      ? notice("bad", "The platform refused: bot was blocked by the user. Nothing was sent; your draft is kept. (API: 502 channel-error)")
+      : notice("warn", "⚠ We couldn't confirm it was delivered. Check the chat on your phone before sending again. (API: 502 delivery-unknown)", true);
   }
-  if (sim === "unknown") {
-    messages[c.id] = messages[c.id].filter((m) => m !== pending);
-    d.locked = true; // the key stays locked, exactly like the API (ADR 0004)
-    return failed(c, "warn", "⚠ We couldn't confirm it was delivered. Check the chat on your phone before sending again. (API: 502 delivery-unknown; retrying this key returns 409, so it's never sent twice)");
-  }
-  pending.pending = false;
-  c.status = "answered"; c.waitingSince = null; c.unansweredCount = 0;
-  c.lastReplyAt = c.lastMessageAt = pending.sentAt;
-  if (sim === "drop") toast(`🔁 The network dropped and the app retried with the same key (${d.key.slice(0, 8)}…). Kiakia answered "already sent", so the customer got it ONCE ✓`);
-  else toast(`✓ Sent to ${c.contact.displayName}`);
-  delete drafts[c.id];
-  renderAll();
-  if (!conversations.some((x) => x.status === "waiting")) celebrate();
+  pending.pending = false; derive(c); delete drafts[c.id];
+  toast(sim === "drop" ? `🔁 The network dropped and the app retried with the same key (${d.key.slice(0, 8)}…). Kiakia answered "already sent", so the customer got it ONCE ✓` : `✓ Sent to ${c.contact.displayName}`);
+  renderAll(); if (!conversations.some((x) => x.status === "waiting")) celebrate();
 }
-function failed(c, kind, msg) { renderChat(); notice(kind, msg, drafts[c.id]?.locked); }
-function renderBubblesOnly() { const keep = drafts[selected]; renderChat(); drafts[selected] = keep; $("send").disabled = true; $("send").textContent = "Sending…"; }
 
-/* ---- Small helpers ---- */
+/* ---------- Render: Messages by platform (GET /v1/stats byChannel + GET /v1/messages) ---------- */
+function renderPlatforms() {
+  $("pcards").innerHTML = Object.keys(PF).map((ch) => { const s = stats(pPeriod, ch);
+    return `<button class="card pcard" style="--c:var(--${ch})" data-pcard="${ch}" aria-pressed="${pChannel === ch}">
+      ${pfIcon(ch, "lg")} <b>${s.received}</b><small>messages received on ${PF[ch].label}</small>
+      <small>${s.conversations} chats · ${s.waiting} waiting · ${s.responseRate === null ? "–" : Math.round(100 * s.responseRate) + "%"} answered</small></button>`; }).join("");
+  const r = range(pPeriod);
+  const all = conversations.flatMap((c) => c.msgs.map((x) => ({ ...x, c }))).filter((x) => inRange(x.sentAt, r) && (!pChannel || x.channel === pChannel))
+    .sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+  $("mlistTitle").innerHTML = pChannel ? `${pfIcon(pChannel)} ${PF[pChannel].label} messages <button class="link" id="allPf">Show all platforms</button>` : "All messages, newest first";
+  $("mlist").innerHTML = all.length ? all.map((x) => `<button class="mrow" data-open="${x.c.id}">${pfIcon(x.channel, "lg")}
+      <span style="min-width:0"><b>${esc(x.c.contact.displayName)}</b> <span class="dir">${x.direction === "in" ? "→ to you" : "← your reply"}</span>
+        <span class="preview" style="display:block">${x.body ? esc(x.body) : kindLabel[x.kind]}</span></span>
+      <span class="side">${when(x.sentAt)}</span></button>`).join("")
+    : `<div class="empty"><div class="big">📭</div>No messages in this period.</div>`;
+}
+
+/* ---------- Helpers ---------- */
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 4200); }
-function celebrate() {
-  const box = document.createElement("div"); box.className = "confetti";
+function celebrate() { const box = document.createElement("div"); box.className = "confetti";
   box.innerHTML = Array.from({ length: 24 }, () => `<span style="left:${Math.random()*100}%;animation-delay:${Math.random()*.6}s">${["🎉","⚡","✅","💚"][Math.floor(Math.random()*4)]}</span>`).join("");
-  document.body.appendChild(box); setTimeout(() => box.remove(), 2400); toast("🎉 Nobody is waiting. Every customer has a reply!");
-}
-function clearSearch() { $("search").value = ""; renderRows(); }
-function back() { $("panes").classList.remove("show-chat"); }
-function renderAll() { renderStats(); renderRows(); renderChat(); }
+  document.body.appendChild(box); setTimeout(() => box.remove(), 2400); toast("🎉 Nobody is waiting. Every customer has a reply!"); }
+function go(v) { document.querySelectorAll("nav.views button").forEach((b) => b.setAttribute("aria-current", b.dataset.view === v ? "page" : "false"));
+  document.querySelectorAll(".view").forEach((s) => s.classList.toggle("active", s.id === "view-" + v)); renderAll(); window.scrollTo(0, 0); }
+function openChat(id) { selected = id; go("inbox"); $("panes").classList.add("show-chat"); }
+function renderAll() { renderDash(); renderPfFilter(); renderRows(); renderChat(); renderPlatforms(); }
 
-/* ---- Events ---- */
-document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
-  tab = b.dataset.tab; document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-pressed", x === b)); renderRows(); }));
+/* ---------- Theme: Auto -> Light -> Dark (remembered on this device) ---------- */
+const THEMES = ["auto", "light", "dark"], THEME_LABEL = { auto: "🌗 Auto", light: "☀️ Light", dark: "🌙 Dark" };
+function applyTheme(t) { if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = t;
+  $("themeBtn").textContent = THEME_LABEL[t]; try { localStorage.setItem("kiakia-theme", t); } catch {} }
+let theme = "auto"; try { theme = localStorage.getItem("kiakia-theme") || "auto"; } catch {}
+applyTheme(theme);
+$("themeBtn").onclick = () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; applyTheme(theme); };
+
+/* ---------- Events ---------- */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.view) go(t.dataset.view);
+  else if (t.dataset.goto) go(t.dataset.goto);
+  else if (t.dataset.platform) { pChannel = t.dataset.platform; go("platforms"); }
+  else if (t.dataset.pcard) { pChannel = pChannel === t.dataset.pcard ? null : t.dataset.pcard; renderPlatforms(); }
+  else if (t.id === "allPf") { pChannel = null; renderPlatforms(); }
+  else if (t.dataset.open) openChat(Number(t.dataset.open));
+  else if (t.classList.contains("row")) openChat(Number(t.dataset.id));
+  else if (t.dataset.tab) { tab = t.dataset.tab; document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-pressed", x === t)); renderRows(); }
+  else if (t.dataset.pf) { const ch = t.dataset.pf; pfOn.has(ch) ? pfOn.delete(ch) : pfOn.add(ch); renderPfFilter(); renderRows(); }
+  else if (t.id === "clearFilters") { $("search").value = ""; $("catFilter").value = ""; $("datePreset").value = "all"; $("customDates").hidden = true; Object.keys(PF).forEach((k) => pfOn.add(k)); renderPfFilter(); renderRows(); }
+  else if (t.dataset.p && t.closest("#dashPeriod")) { dashPeriod = t.dataset.p; t.parentElement.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b === t)); renderDash(); }
+  else if (t.dataset.p && t.closest("#pPeriod")) { pPeriod = t.dataset.p; t.parentElement.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b === t)); renderPlatforms(); }
+});
 let debounce; $("search").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(renderRows, 300); });
-$("channel").addEventListener("change", renderRows);
-$("rows").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (!r) return;
-  selected = Number(r.dataset.id); $("panes").classList.add("show-chat"); renderRows(); renderChat(); });
+$("catFilter").addEventListener("change", renderRows);
+$("datePreset").addEventListener("change", (e) => { $("customDates").hidden = e.target.value !== "custom"; renderRows(); });
+$("dFrom").addEventListener("change", renderRows); $("dTo").addEventListener("change", renderRows);
 document.addEventListener("keydown", (e) => {
-  if (e.key === "/" && document.activeElement.tagName !== "TEXTAREA" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("search").focus(); }
-  if (e.key === "Escape") back(); });
+  if (e.key === "/" && !["TEXTAREA", "INPUT"].includes(document.activeElement.tagName)) { e.preventDefault(); go("inbox"); $("search").focus(); }
+  if (e.key === "Escape") $("panes").classList.remove("show-chat"); });
 $("demoState").addEventListener("change", (e) => { demo = e.target.value; const down = demo === "error";
   $("banner").classList.toggle("show", down); $("dot").classList.toggle("off", down); renderAll(); });
 $("retryNow").addEventListener("click", () => { $("demoState").value = "normal"; $("demoState").dispatchEvent(new Event("change")); toast("Reconnected ✓"); });
 
-/* Live: timers tick every second; "data" refreshes every 10 s (polling, paused when hidden). */
+/* Live: every second refresh the time wording; every 10 s "poll" (paused when the tab is hidden). */
 setInterval(() => {
-  document.querySelectorAll("[data-since]").forEach((el) => { if (!el.dataset.since) return; const ms = waited(el.dataset.since);
-    el.textContent = (el.classList.contains("timer") ? "⏳ " : "") + fmt(ms);
-    if (el.classList.contains("timer")) el.className = "timer " + heat(ms); });
+  document.querySelectorAll("[data-when]").forEach((el) => { const ms = age(el.dataset.when); el.textContent = `📩 Received ${dur(ms)} ago · no reply yet`; el.className = "when " + heat(ms); });
+  document.querySelectorAll("[data-dur]").forEach((el) => { if (el.dataset.dur) el.textContent = dur(age(el.dataset.dur)); });
   const s = Math.round((Date.now() - lastUpdate) / 1000);
   $("liveText").textContent = demo === "error" ? "Offline" : `Live · updated ${s < 2 ? "just now" : s + "s ago"}`;
   if (demo === "error") { const r = $("retryIn"); r.textContent = r.textContent > 1 ? r.textContent - 1 : 10; }
 }, 1000);
-setInterval(() => { if (!document.hidden && demo !== "error") { lastUpdate = Date.now(); renderStats(); renderRows(); } }, 10000);
+setInterval(() => { if (!document.hidden && demo !== "error") { lastUpdate = Date.now(); renderDash(); renderRows(); } }, 10000);
 
 renderAll();
 </script>
