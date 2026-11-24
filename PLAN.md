@@ -9,7 +9,8 @@
 customer message from WhatsApp, Instagram, Facebook (and later TikTok, Telegram and email)
 in one place, and is told straight away when a customer is still waiting.**
 
-Messaging only. **No CRM, no marketing broadcasts, no posting.**
+Messaging first, plus a **light customer list with consent asked in the chat** (ADR 0007).
+**No sales pipelines, no posting; offers only to customers who opted in.**
 
 ## 2. Who it's for
 
@@ -41,7 +42,7 @@ software for teams**. Kiakia is built for **the owner-seller**:
 2. **The owner sees how staff are doing**: who replied, how fast, and who was missed.
 3. **Voice notes as text**, because that's how customers here actually message.
 4. **Chat → payment** in one tap, to turn conversations into sales while they're hot.
-5. **Simple on purpose.** If a feature is something a CRM does, we don't build it.
+5. **Simple on purpose.** A light customer list with recorded consent, yes (ADR 0007); pipelines, deals and lead scoring, no.
 
 ## 5. Scope
 
@@ -60,7 +61,7 @@ software for teams**. Kiakia is built for **the owner-seller**:
 
 ### Never (to stay simple)
 - Sales pipelines, deals, lead scoring (CRM).
-- Bulk marketing messages and broadcasts.
+- Messages to anyone who hasn't opted in; buying or importing contact lists.
 - Posting content to social media.
 
 ## 6. Platform rules that affect the design
