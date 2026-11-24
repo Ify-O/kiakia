@@ -79,6 +79,18 @@ uv run pytest
 
 Run the import as often as you like: a second run never creates duplicates.
 
+### Quality checks
+
+```bash
+uv run ruff check .        # lint (incl. security rules)
+uv run ruff format .       # format
+uv run mypy                # strict type checking
+uv run pytest              # 33 unit + integration tests
+```
+
+The same checks run automatically on GitHub for every push and pull request
+([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+
 ### What's in the database
 
 | Table | Holds |

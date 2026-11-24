@@ -190,7 +190,19 @@ Not needed in week 1, but noted from class:
   4. *"How can I improve it, and where? Use industry best practice and clean architecture."*
   5. *"What kind of architecture did I use in this project?"*
 
-## 11. Git workflow
+## 11. Tooling (today's Python standard)
+
+| Tool | Job | Command |
+|---|---|---|
+| **uv** | Installs Python 3.12 + packages; `uv.lock` pins exact versions so every machine is identical | `uv sync` |
+| **ruff** | Linter (bugs, security, modern syntax, import order) + formatter | `uv run ruff check .` / `uv run ruff format .` |
+| **mypy** (strict) | Type checker: catches wrong types before the code runs | `uv run mypy` |
+| **pytest** | Unit + integration tests | `uv run pytest` |
+| **GitHub Actions CI** | Runs all of the above + migrations on every push/PR, with a real Postgres | automatic |
+
+Rule: ruff, mypy and pytest must all pass before a commit is pushed; CI enforces it on GitHub.
+
+## 12. Git workflow
 
 - `main` always works. New work goes on a branch, e.g. `week1/telegram-importer`.
 - Small commits, each one a working step with a clear message.
