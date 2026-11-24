@@ -64,3 +64,34 @@ jobs:
 
       - name: Tests (unit + integration)
         run: uv run pytest -v
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node (version from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies (exactly as in package-lock.json)
+        run: npm ci
+
+      - name: UI types match the contract (regenerate from openapi.yaml; fail if different)
+        run: npm run check:api
+
+      - name: Type check (the UI can't use fields the contract doesn't have)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build

@@ -229,6 +229,10 @@ Inbox filters: **status tabs** (Waiting / Answered / Resolved / All), **platform
 **date** (Any time, Today, Yesterday, Last 7 days, Last 30 days, Custom range), **category**, and search.
 → `GET /v1/conversations?status=&channel=&from=&to=&category=&q=`
 
+> **Built version note:** the contract's `channel` filter takes **one** platform at a time, so the real
+> app's platform filter is "All" or one platform (tap an icon). Several at once would need a contract
+> change and an ADR first; it wasn't needed for the assignment.
+
 ### 8.5 Better dashboard (contract: ADR 0006 §2–3)
 | Card | Contract source |
 |---|---|
