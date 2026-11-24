@@ -1,0 +1,30 @@
+{
+  "name": "kiakia-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Kiakia web inbox. Built ONLY from ../openapi.yaml (docs/adr/0001, 0005).",
+  "scripts": {
+    "dev": "vite",
+    "gen:api": "openapi-typescript ../openapi.yaml -o src/api/schema.d.ts",
+    "check:api": "openapi-typescript ../openapi.yaml -o src/api/schema.d.ts && git diff --exit-code -- src/api/schema.d.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.1",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "~5.9",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
