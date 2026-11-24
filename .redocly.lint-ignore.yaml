@@ -1,0 +1,10 @@
+# Deliberately accepted lint findings, each with its reason. Keep this list short and justified.
+# See https://redocly.com/docs/cli/ for more information.
+openapi.yaml:
+  no-server-example.com:
+    # The API only runs locally for now (course rule: no deployment). Replace when we deploy.
+    - '#/servers/0/url'
+  operation-4xx-response:
+    # /health takes no input at all, so no client error is possible.
+    # A made-up 4xx would make the contract lie. Server-side failures are documented (503).
+    - '#/paths/~1health/get/responses'

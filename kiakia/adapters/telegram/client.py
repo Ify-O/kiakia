@@ -28,23 +28,47 @@ def telegram_retry_after(resp: requests.Response) -> float | None:
     return header_retry_after(resp)
 
 
+def telegram_error_detail(resp: requests.Response) -> str | None:
+    """Telegram explains refusals in the body, e.g. "Forbidden: bot was blocked by the user"."""
+    description = resp.json().get("description")
+    return str(description) if description else None
+
+
 class TelegramClient:
     def __init__(self, token: str, http: ResilientHttpClient | None = None):
         if not token:
             raise ValueError("Telegram bot token is empty")
         self._token = token
-        self._http = http or ResilientHttpClient(retry_after_reader=telegram_retry_after)
+        self._http = http or ResilientHttpClient(
+            retry_after_reader=telegram_retry_after, error_detail_reader=telegram_error_detail
+        )
 
     def __repr__(self) -> str:
         return "TelegramClient(token=***)"
 
-    def _call(self, method: str, params: dict[str, Any]) -> Any:
-        url = f"{API_BASE}/bot{self._token}/{method}"
-        body = self._http.get_json(url, params=params, label=f"telegram {method}")
+    def _url(self, method: str) -> str:
+        return f"{API_BASE}/bot{self._token}/{method}"
+
+    def _result(self, method: str, body: Any) -> Any:
         if not isinstance(body, dict) or body.get("ok") is not True:
             description = body.get("description") if isinstance(body, dict) else None
             raise SourceRejectedRequest(f"telegram {method}: {description or 'unexpected response'}")
         return body.get("result")
+
+    def _call(self, method: str, params: dict[str, Any]) -> Any:
+        return self._result(
+            method, self._http.get_json(self._url(method), params=params, label=f"telegram {method}")
+        )
+
+    def send_message(self, chat_id: str, text: str) -> dict[str, Any]:
+        """Send a text message. Never retried when delivery is uncertain (see post_json_unsafe)."""
+        body = self._http.post_json_unsafe(
+            self._url("sendMessage"),
+            json_body={"chat_id": chat_id, "text": text},
+            label="telegram sendMessage",
+        )
+        result = self._result("sendMessage", body)
+        return result if isinstance(result, dict) else {}
 
     def get_updates(self, offset: int | None, limit: int = MAX_LIMIT) -> list[dict[str, Any]]:
         """Fetch pending updates. Passing `offset` CONFIRMS (deletes) all updates before it,

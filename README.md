@@ -10,6 +10,7 @@ Messaging only: no CRM, no marketing broadcasts.
 - Product plan: [PLAN.md](PLAN.md)
 - Engineering rules (architecture, errors, migrations, tests, security): [docs/ENGINEERING.md](docs/ENGINEERING.md)
 - Architecture diagrams and review (weak parts + improvement plan): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- UI/UX design (screens, states, contract mapping) and a clickable mockup: [docs/ui/UI_DESIGN.md](docs/ui/UI_DESIGN.md)
 
 ## Week 1: Telegram importer
 
@@ -80,13 +81,60 @@ uv run pytest
 
 Run the import as often as you like: a second run never creates duplicates.
 
+### Run the web API (Assignment 2)
+
+The API contract is [openapi.yaml](openapi.yaml), written **before** the code
+([decision records](docs/adr/README.md)).
+
+```bash
+uv run uvicorn kiakia.api.app:create_app_from_env --factory --reload
+```
+
+Then open <http://localhost:8000/docs> to browse and try the API (it shows `openapi.yaml` itself).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /v1/conversations` | List with filters (`status`, `channel`, `q`, `sort`) and cursor pagination |
+| `GET /v1/conversations/{id}` | One conversation with details |
+| `GET /v1/conversations/{id}/messages` | Its messages, newest first, paginated |
+| `POST /v1/conversations/{id}/replies` | Reply to the customer through Telegram. **Idempotent**: send an `Idempotency-Key` header; retries never message the customer twice |
+| `PATCH /v1/conversations/{id}` | Mark resolved / reopen, set a category (enquiry, order, complaint, other) |
+| `GET /v1/messages` | All messages across conversations, newest first (filter by platform, direction, dates) |
+| `GET /v1/stats` | Dashboard numbers for a period: response rate, typical reply time, per platform, per category |
+| `GET /health` | API + database health |
+
+Lint the contract: `npx @redocly/cli@2.83.0 lint openapi.yaml` (Node 22, see `.nvmrc`).
+
+### Run the web inbox (Assignment 2)
+
+The UI is built **only** from `openapi.yaml`: its TypeScript types are generated from the contract
+([ADR 0005](docs/adr/0005-fastapi-and-react.md)). Design: [docs/ui/UI_DESIGN.md](docs/ui/UI_DESIGN.md).
+
+```bash
+# Terminal 1: the API
+uv run uvicorn kiakia.api.app:create_app_from_env --factory --reload
+
+# Terminal 2: the web app (Node 22, see .nvmrc)
+cd web
+npm install
+npm run dev          # open http://localhost:5173
+```
+
+| Screen | What you can do |
+|---|---|
+| 📊 Dashboard | Red/green "customers waiting" light, longest wait, response rate, typical reply time, messages per platform, categories |
+| 📥 Inbox | Filter by status, platform, date, category, search; open a chat; reply; mark resolved; label it |
+| 📡 Messages by platform | Per-platform numbers and every message, newest first |
+
+Web checks: `npm run check:api` (types match the contract), `npm run typecheck`, `npm test`, `npm run build`.
+
 ### Quality checks
 
 ```bash
 uv run ruff check .        # lint (incl. security rules)
 uv run ruff format .       # format
 uv run mypy                # strict type checking
-uv run pytest              # 54 unit + integration tests
+uv run pytest              # unit + integration + contract tests (incl. Schemathesis)
 ```
 
 The same checks run automatically on GitHub for every push and pull request

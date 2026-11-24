@@ -18,3 +18,4 @@ exports/
 # OS / editor
 .DS_Store
 .vscode/
+.claude/launch.json

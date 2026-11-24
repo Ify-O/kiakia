@@ -1,0 +1,5 @@
+# Redocly CLI config: lint openapi.yaml with the industry "recommended" ruleset.
+# Run:  npx @redocly/cli@2.83.0 lint openapi.yaml
+# Accepted exceptions (each with a reason) live in .redocly.lint-ignore.yaml.
+extends:
+  - recommended

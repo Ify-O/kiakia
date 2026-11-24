@@ -6,8 +6,7 @@ from kiakia.application.import_messages import ImportMessages
 from kiakia.application.waiting import ListWaitingCustomers
 from kiakia.bootstrap import app
 from kiakia.config import ConfigError
-
-from .conftest import TEST_DB
+from tests.conftest import TEST_DB
 
 pytestmark = pytest.mark.integration
 
