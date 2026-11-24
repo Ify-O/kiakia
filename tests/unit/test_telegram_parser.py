@@ -84,6 +84,17 @@ def test_garbage_never_crashes_the_run():
     assert r.next_cursor == "8"
 
 
+def test_boolean_update_id_is_rejected():
+    # W14: True is an int in Python (True == 1); it must not pass as an update id.
+    update = {
+        "update_id": True,
+        "message": {"message_id": 1, "chat": {"id": 1, "type": "private"}, "date": 1795600000, "text": "x"},
+    }
+    r = parse_updates([update])
+    assert r.messages == [] and len(r.rejects) == 1
+    assert r.next_cursor is None
+
+
 def test_empty_batch_has_no_cursor():
     r = parse_updates([])
     assert r.next_cursor is None and r.messages == []

@@ -17,7 +17,7 @@ Decisions:
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeGuard
 
 from kiakia.domain.models import Channel, Direction, FetchResult, Message, MessageKind, Reject, Sender
 
@@ -37,6 +37,11 @@ _MEDIA_KINDS = (
 
 class _Bad(ValueError):
     """Internal: this update can't be used (becomes a Reject)."""
+
+
+def _is_int(value: Any) -> TypeGuard[int]:
+    """True for real integers only. In Python, True/False are also ints (True == 1)."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _clean(value: Any) -> str | None:
@@ -119,11 +124,11 @@ def parse_updates(updates: Iterable[Any]) -> FetchResult:
             result.rejects.append(Reject("update is not an object"))
             continue
         update_id = update.get("update_id")
-        if isinstance(update_id, int):
+        if _is_int(update_id):
             max_update_id = update_id if max_update_id is None else max(max_update_id, update_id)
         ref = str(update_id) if update_id is not None else None
         try:
-            if not isinstance(update_id, int):
+            if not _is_int(update_id):
                 raise _Bad("missing or invalid update_id")
             message = parse_update(update)
         except (_Bad, ValueError) as exc:
