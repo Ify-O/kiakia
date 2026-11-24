@@ -9,6 +9,7 @@ Messaging only: no CRM, no marketing broadcasts.
 
 - Product plan: [PLAN.md](PLAN.md)
 - Engineering rules (architecture, errors, migrations, tests, security): [docs/ENGINEERING.md](docs/ENGINEERING.md)
+- Architecture diagrams and review (weak parts + improvement plan): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Week 1: Telegram importer
 
