@@ -99,3 +99,13 @@ class WaitingCustomer:
 
     def waited(self, now: datetime) -> timedelta:
         return now - self.waiting_since
+
+
+@dataclass(frozen=True)
+class InboxStats:
+    """A quick overview of what Kiakia holds."""
+
+    contacts: int
+    conversations: int
+    messages: int
+    by_kind: dict[MessageKind, int]

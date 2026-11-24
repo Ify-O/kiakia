@@ -1,6 +1,6 @@
 """PostgreSQL adapter: the ONLY place in Kiakia that reads or writes the database.
 
-Implements the MessageRepository, CursorStore and ImportRunLog ports.
+Implements the MessageRepository, CursorStore, ImportRunLog and StatsQuery ports.
 Uses psycopg 3, the current PostgreSQL driver for Python.
 
 - All SQL is parameterised (%s placeholders), never built from strings.
@@ -14,7 +14,15 @@ from typing import Any
 import psycopg
 
 from kiakia.domain.errors import StorageUnavailable
-from kiakia.domain.models import Channel, Direction, Message, RunStatus, WaitingCustomer
+from kiakia.domain.models import (
+    Channel,
+    Direction,
+    InboxStats,
+    Message,
+    MessageKind,
+    RunStatus,
+    WaitingCustomer,
+)
 
 
 def connect(host: str, port: int, user: str, password: str, dbname: str) -> psycopg.Connection:
@@ -193,9 +201,9 @@ class PostgresStore:
                 (status.value, seen, saved, bad, error, run_id),
             )
 
-    # ---------- small read helpers for the CLI ----------
+    # ---------- StatsQuery ----------
 
-    def counts(self) -> dict[str, Any]:
+    def inbox_stats(self) -> InboxStats:
         with self._conn.cursor() as cur:
             cur.execute(
                 """SELECT (SELECT count(*) FROM contacts), (SELECT count(*) FROM conversations),
@@ -203,10 +211,5 @@ class PostgresStore:
             )
             contacts, conversations, messages = _one(cur)
             cur.execute("SELECT kind, count(*) FROM messages GROUP BY kind ORDER BY 2 DESC")
-            by_kind: dict[str, int] = dict(cur.fetchall())
-        return {
-            "contacts": contacts,
-            "conversations": conversations,
-            "messages": messages,
-            "by_kind": by_kind,
-        }
+            by_kind = {MessageKind(kind): count for kind, count in cur.fetchall()}
+        return InboxStats(contacts=contacts, conversations=conversations, messages=messages, by_kind=by_kind)

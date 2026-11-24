@@ -58,10 +58,10 @@ def cmd_waiting(args: argparse.Namespace) -> None:
 
 def cmd_stats(args: argparse.Namespace) -> None:
     with app(load_settings(require_telegram=False)) as services:
-        c = services.store.counts()  # still bypasses the ports: fixed next (W9)
-    print(f"Contacts: {c['contacts']}   Conversations: {c['conversations']}   Messages: {c['messages']}")
-    for kind, n in c["by_kind"].items():
-        print(f"  {kind:9} {n}")
+        st = services.get_inbox_stats().run()
+    print(f"Contacts: {st.contacts}   Conversations: {st.conversations}   Messages: {st.messages}")
+    for kind, n in st.by_kind.items():
+        print(f"  {kind.value:9} {n}")
 
 
 def main(argv: list[str] | None = None) -> int:

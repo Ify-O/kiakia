@@ -7,7 +7,7 @@ cases don't change. Each port is small (interface segregation).
 
 from typing import Protocol
 
-from .models import FetchResult, Message, RunStatus, WaitingCustomer
+from .models import FetchResult, InboxStats, Message, RunStatus, WaitingCustomer
 
 
 class MessageSource(Protocol):
@@ -43,3 +43,9 @@ class ImportRunLog(Protocol):
     def finish_run(
         self, run_id: int, *, status: RunStatus, seen: int, saved: int, bad: int, error: str | None = None
     ) -> None: ...
+
+
+class StatsQuery(Protocol):
+    """Read-only overview numbers (kept separate from MessageRepository: interface segregation)."""
+
+    def inbox_stats(self) -> InboxStats: ...

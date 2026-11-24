@@ -16,6 +16,7 @@ from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
 from kiakia.adapters.telegram.source import TelegramSource
 from kiakia.application.import_messages import ImportMessages
+from kiakia.application.stats import GetInboxStats
 from kiakia.application.waiting import ListWaitingCustomers
 from kiakia.config import ConfigError, Settings
 
@@ -36,6 +37,9 @@ class Services:
 
     def list_waiting_customers(self) -> ListWaitingCustomers:
         return ListWaitingCustomers(self.store)
+
+    def get_inbox_stats(self) -> GetInboxStats:
+        return GetInboxStats(self.store)
 
 
 @contextmanager

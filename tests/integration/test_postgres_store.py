@@ -107,3 +107,17 @@ def test_failed_batch_saves_nothing(conn):
     with pytest.raises(psycopg.IntegrityError):
         store.save_messages([good, bad])
     assert count(conn, "messages") == 0  # all or nothing
+
+
+def test_inbox_stats(conn):
+    store = PostgresStore(conn)
+    store.save_messages(
+        [
+            msg("9001", 1, 0, ADA),
+            msg("9001", 2, 1, ADA, body=None, kind=MessageKind.VOICE),
+            msg("9002", 1, 2, BAYO),
+        ]
+    )
+    st = store.inbox_stats()
+    assert (st.contacts, st.conversations, st.messages) == (2, 2, 3)
+    assert st.by_kind == {MessageKind.TEXT: 2, MessageKind.VOICE: 1}
