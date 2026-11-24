@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Kiakia API
-  version: 1.1.0
+  version: 1.2.0
   summary: Every customer, answered fast.
   description: |
     The contract for Kiakia, a single inbox for small businesses that sell through chat.
@@ -36,6 +36,8 @@ tags:
     description: The messages inside a conversation.
   - name: Replies
     description: Send a reply to a customer from Kiakia.
+  - name: Customers
+    description: The light customer list, with consent asked in the chat and recorded (docs/adr/0007).
   - name: Stats
     description: Numbers for the dashboard.
   - name: Health
@@ -287,6 +289,121 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/customers:
+    get:
+      operationId: listCustomers
+      tags: [Customers]
+      summary: List customers
+      description: Everyone who has written to the business, most recent contact first, with their consent status.
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive search in name, username, phone or email.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: detailsConsent
+          in: query
+          description: Only customers with this "save my details" status.
+          schema:
+            $ref: "#/components/schemas/ConsentStatus"
+        - name: marketingConsent
+          in: query
+          description: Only customers with this "send me offers" status.
+          schema:
+            $ref: "#/components/schemas/ConsentStatus"
+        - name: channel
+          in: query
+          description: Only customers we know on this channel.
+          schema:
+            $ref: "#/components/schemas/Channel"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: One page of customers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/customers/{customerId}:
+    parameters:
+      - $ref: "#/components/parameters/CustomerId"
+    get:
+      operationId: getCustomer
+      tags: [Customers]
+      summary: Get one customer
+      description: The customer with their platforms, conversations and full consent history.
+      responses:
+        "200":
+          description: The customer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/customers/{customerId}/consent:
+    parameters:
+      - $ref: "#/components/parameters/CustomerId"
+    post:
+      operationId: recordConsent
+      tags: [Customers]
+      summary: Record a consent question or answer
+      description: |
+        Records that we **asked**, or that the customer **granted**, **declined** or **withdrew** consent,
+        for `details` ("save my details") or `marketing` ("send me offers"). Pass the `conversationId`
+        where it happened: its latest customer message is kept as evidence.
+        - `details` (name/phone/email) may only be sent with `kind: details, status: granted`.
+        - Declining or withdrawing `details` erases phone and email.
+        - Recording the customer's current status again changes nothing (safe to repeat).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRecord"
+            example:
+              kind: details
+              status: granted
+              conversationId: 42
+              details:
+                name: Ada Test
+                phone: "+234 803 123 4567"
+                email: ada@example.com
+      responses:
+        "200":
+          description: The customer after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/stats:
     get:
       operationId: getStats
@@ -335,6 +452,15 @@ components:
       in: path
       required: true
       description: The conversation's id.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      description: The customer's id.
       schema:
         type: integer
         format: int64
@@ -401,7 +527,7 @@ components:
     Contact:
       type: object
       additionalProperties: false
-      required: [id, displayName, username]
+      required: [id, displayName, username, detailsConsent, marketingConsent]
       properties:
         id:
           type: integer
@@ -414,6 +540,10 @@ components:
           type: [string, "null"]
           description: The customer's handle on the channel, if they have one.
           example: ada_test
+        detailsConsent:
+          $ref: "#/components/schemas/ConsentStatus"
+        marketingConsent:
+          $ref: "#/components/schemas/ConsentStatus"
 
     ConversationFields:
       description: Fields shared by ConversationSummary and ConversationDetail (not used on its own).
@@ -580,6 +710,203 @@ components:
           type: [number, "null"]
           minimum: 0
           maximum: 1
+
+    ConsentStatus:
+      type: string
+      description: |
+        `unknown` = never asked (a 🆕 new customer). `asked` = question sent, no answer recorded yet.
+        `granted` / `declined` = the customer's answer. `withdrawn` = granted before, then taken back
+        (e.g. they replied STOP). See docs/adr/0007.
+      enum: [unknown, asked, granted, declined, withdrawn]
+
+    ConsentKind:
+      type: string
+      description: "`details` = save my name/phone/email. `marketing` = send me offers and sales."
+      enum: [details, marketing]
+
+    CustomerChannel:
+      type: object
+      additionalProperties: false
+      required: [channel, username]
+      properties:
+        channel:
+          $ref: "#/components/schemas/Channel"
+        username:
+          type: [string, "null"]
+
+    CustomerFields:
+      description: Fields shared by Customer and CustomerDetail (not used on its own).
+      type: object
+      required:
+        - id
+        - displayName
+        - phone
+        - email
+        - detailsConsent
+        - marketingConsent
+        - firstChannel
+        - channels
+        - firstContactAt
+        - lastContactAt
+        - conversationCount
+        - orderCount
+      properties:
+        id:
+          type: integer
+          format: int64
+        displayName:
+          type: string
+        phone:
+          type: [string, "null"]
+          description: Only present when the customer agreed to save their details.
+        email:
+          type: [string, "null"]
+          description: Only present when the customer agreed to save their details.
+        detailsConsent:
+          $ref: "#/components/schemas/ConsentStatus"
+        marketingConsent:
+          $ref: "#/components/schemas/ConsentStatus"
+        firstChannel:
+          $ref: "#/components/schemas/Channel"
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerChannel"
+        firstContactAt:
+          type: string
+          format: date-time
+        lastContactAt:
+          type: string
+          format: date-time
+        conversationCount:
+          type: integer
+          minimum: 0
+        orderCount:
+          type: integer
+          minimum: 0
+          description: Conversations labelled `order`.
+
+    Customer:
+      allOf:
+        - $ref: "#/components/schemas/CustomerFields"
+      unevaluatedProperties: false
+
+    CustomerConversation:
+      type: object
+      additionalProperties: false
+      required: [id, channel, status, lastMessageAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        channel:
+          $ref: "#/components/schemas/Channel"
+        status:
+          $ref: "#/components/schemas/ConversationStatus"
+        lastMessageAt:
+          type: string
+          format: date-time
+
+    ConsentEvent:
+      type: object
+      additionalProperties: false
+      required: [id, kind, status, channel, wording, evidenceMessageId, recordedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          $ref: "#/components/schemas/ConsentKind"
+        status:
+          $ref: "#/components/schemas/ConsentStatus"
+        channel:
+          oneOf:
+            - $ref: "#/components/schemas/Channel"
+            - type: "null"
+        wording:
+          type: [string, "null"]
+          description: The exact question we asked (for `asked`).
+        evidenceMessageId:
+          type: [integer, "null"]
+          format: int64
+          description: The customer's message that answered (or STOP), kept as proof.
+        recordedAt:
+          type: string
+          format: date-time
+
+    CustomerDetail:
+      allOf:
+        - $ref: "#/components/schemas/CustomerFields"
+        - type: object
+          required: [conversations, consentHistory]
+          properties:
+            conversations:
+              type: array
+              items:
+                $ref: "#/components/schemas/CustomerConversation"
+            consentHistory:
+              type: array
+              description: Oldest first. Append-only.
+              items:
+                $ref: "#/components/schemas/ConsentEvent"
+      unevaluatedProperties: false
+
+    CustomerPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Customer"
+        page:
+          $ref: "#/components/schemas/PageInfo"
+
+    ConsentRecord:
+      type: object
+      additionalProperties: false
+      required: [kind, status]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ConsentKind"
+        status:
+          type: string
+          enum: [asked, granted, declined, withdrawn]
+        conversationId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Where it happened (gives the channel and the evidence message).
+        wording:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: The exact question sent (for `asked`).
+        details:
+          $ref: "#/components/schemas/CustomerDetails"
+
+    CustomerDetails:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: "Only what the customer chose to share. Only allowed with `kind: details, status: granted`."
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: "\\S"
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 20
+          pattern: "^\\+?[0-9][0-9 ()-]{5,19}$"
+          example: "+234 803 123 4567"
+        email:
+          type: string
+          format: email
+          maxLength: 254
 
     ReplyCreate:
       type: object
