@@ -9,10 +9,15 @@ from datetime import datetime
 from typing import Protocol
 
 from .models import (
+    Channel,
+    ConsentChange,
     ConversationChanges,
     ConversationDetail,
     ConversationFilter,
     ConversationSummary,
+    Customer,
+    CustomerDetail,
+    CustomerFilter,
     FeedFilter,
     FeedItem,
     FetchResult,
@@ -141,4 +146,31 @@ class IdempotencyStore(Protocol):
 
     def release(self, scope: str, key: str) -> None:
         """Forget a key whose request failed before anything was sent, so it can be retried."""
+        ...
+
+
+class CustomerStore(Protocol):
+    """The light customer list with recorded consent (ADR 0007)."""
+
+    def list_customers(self, filters: CustomerFilter, limit: int, after: Keyset | None) -> list[Customer]:
+        """Most recent contact first, strictly after `after` = (last contact time, id)."""
+        ...
+
+    def get_customer(self, customer_id: int) -> CustomerDetail | None: ...
+
+    def conversation_evidence(
+        self, customer_id: int, conversation_id: int
+    ) -> tuple[Channel, int | None] | None:
+        """The conversation's channel and latest customer message id, or None if it isn't this customer's."""
+        ...
+
+    def record_consent(self, change: ConsentChange) -> None:
+        """Append the event and update the current status atomically. Declining/withdrawing
+        details erases phone and email."""
+        ...
+
+
+class OptOutRecorder(Protocol):
+    def withdraw_marketing(self, message: Message) -> bool:
+        """The customer who sent `message` (e.g. "STOP") opts out of offers. True if recorded."""
         ...

@@ -391,3 +391,171 @@ def test_bad_periods_are_400(client, params, field):
     for path in ("/v1/conversations", "/v1/stats", "/v1/messages"):
         r = call(client, path, params)
         assert r.status_code == 400 and field in [e["field"] for e in r.json()["errors"]], path
+
+
+# ---------- ADR 0007: customers + recorded consent ----------
+
+
+def post_json(client, path, body):
+    data = json.dumps(body)
+    headers = {"Content-Type": "application/json"}
+    response = client.post(path, content=data, headers=headers)
+    content_type = response.headers.get("content-type", "").split(";")[0]
+    CONTRACT.validate_response(
+        MockRequest(SERVER, "post", path, headers=headers, data=data.encode()),
+        MockResponse(
+            response.content,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            content_type=content_type,
+        ),
+    )
+    return response
+
+
+def ada_ids(client):
+    conv = call(client, "/v1/conversations", {"q": "ada"}).json()["data"][0]
+    return conv["contact"]["id"], conv["id"]
+
+
+def test_new_customers_show_unknown_consent_everywhere(client):
+    conv = call(client, "/v1/conversations", {"q": "ada"}).json()["data"][0]
+    assert conv["contact"]["detailsConsent"] == "unknown" and conv["contact"]["marketingConsent"] == "unknown"
+    feed = call(client, "/v1/messages", {"limit": 1}).json()["data"][0]
+    assert feed["contact"]["detailsConsent"] == "unknown"
+
+
+def test_customer_list_and_detail(client):
+    body = call(client, "/v1/customers").json()
+    assert len(body["data"]) == 4 and body["data"][0]["displayName"] == "100% Real_Deal"
+    ada_id, _ = ada_ids(client)
+    detail = call(client, f"/v1/customers/{ada_id}").json()
+    assert detail["firstChannel"] == "telegram" and detail["channels"] == [
+        {"channel": "telegram", "username": "ada_test"}
+    ]
+    assert detail["phone"] is None and detail["consentHistory"] == [] and len(detail["conversations"]) == 1
+
+
+def test_full_consent_flow_in_the_chat(client):
+    ada_id, conv_id = ada_ids(client)
+    path = f"/v1/customers/{ada_id}/consent"
+    asked = post_json(
+        client,
+        path,
+        {
+            "kind": "details",
+            "status": "asked",
+            "conversationId": conv_id,
+            "wording": "Can we save your contact details? Reply YES or NO.",
+        },
+    )
+    assert asked.status_code == 200 and asked.json()["detailsConsent"] == "asked"
+    yes = post_json(
+        client,
+        path,
+        {
+            "kind": "details",
+            "status": "granted",
+            "conversationId": conv_id,
+            "details": {"name": "Ada Okafor", "phone": "+234 803 123 4567", "email": "ada@example.com"},
+        },
+    )
+    body = yes.json()
+    assert (body["displayName"], body["phone"], body["email"]) == (
+        "Ada Okafor",
+        "+234 803 123 4567",
+        "ada@example.com",
+    )
+    assert [e["status"] for e in body["consentHistory"]] == ["asked", "granted"]
+    assert body["consentHistory"][1]["evidenceMessageId"] is not None  # the customer's message, kept as proof
+    assert body["consentHistory"][0]["channel"] == "telegram"
+    offers_no = post_json(
+        client, path, {"kind": "marketing", "status": "declined", "conversationId": conv_id}
+    )
+    assert (
+        offers_no.json()["marketingConsent"] == "declined" and offers_no.json()["detailsConsent"] == "granted"
+    )
+    again = post_json(client, path, {"kind": "marketing", "status": "declined"})  # repeat: no new event
+    assert len(again.json()["consentHistory"]) == 3
+    filtered = call(client, "/v1/customers", {"detailsConsent": "granted"}).json()["data"]
+    assert [c["displayName"] for c in filtered] == ["Ada Okafor"]
+
+
+def test_saying_no_saves_nothing_and_is_remembered(client):
+    ada_id, conv_id = ada_ids(client)
+    r = post_json(
+        client,
+        f"/v1/customers/{ada_id}/consent",
+        {"kind": "details", "status": "declined", "conversationId": conv_id},
+    )
+    assert r.json()["detailsConsent"] == "declined" and r.json()["phone"] is None
+    conv = call(client, f"/v1/conversations/{conv_id}").json()
+    assert conv["contact"]["detailsConsent"] == "declined"  # the "no" is remembered, so we never ask again
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {
+            "kind": "marketing",
+            "status": "granted",
+            "details": {"name": "Ada"},
+        },  # details only with a details yes
+        {"kind": "details", "status": "granted", "details": {}},  # share at least one thing
+        {"kind": "details", "status": "granted", "details": {"phone": "call me"}},
+        {"kind": "details", "status": "granted", "details": {"email": "not-an-email"}},
+        {"kind": "details", "status": "unknown"},
+        {"kind": "photos", "status": "granted"},
+        {"kind": "details", "status": "asked", "conversationId": "5"},
+    ],
+)
+def test_bad_consent_records_are_422(client, body):
+    ada_id, _ = ada_ids(client)
+    assert post_json(client, f"/v1/customers/{ada_id}/consent", body).status_code == 422
+
+
+def test_evidence_must_be_the_customers_own_chat(client):
+    ada_id, _ = ada_ids(client)
+    bayo_conv = call(client, "/v1/conversations", {"q": "bayo"}).json()["data"][0]["id"]
+    r = post_json(
+        client,
+        f"/v1/customers/{ada_id}/consent",
+        {"kind": "details", "status": "asked", "conversationId": bayo_conv},
+    )
+    assert r.status_code == 404
+
+
+def test_unknown_customer_is_404(client):
+    assert call(client, "/v1/customers/999999").status_code == 404
+    assert (
+        post_json(client, "/v1/customers/999999/consent", {"kind": "details", "status": "asked"}).status_code
+        == 404
+    )
+
+
+@pytest.mark.parametrize("field", ["wording", "conversationId", "details"])
+def test_optional_fields_may_be_left_out_but_not_null(client, field):
+    ada_id, _ = ada_ids(client)
+    r = post_json(
+        client, f"/v1/customers/{ada_id}/consent", {"kind": "details", "status": "asked", field: None}
+    )
+    assert r.status_code == 422 and field in [e["field"] for e in r.json()["errors"]]
+
+
+def test_invisible_nul_characters_never_crash_the_api(client, sender):
+    # Found by Schemathesis: PostgreSQL rejects NUL (\u0000) in text, which used to cause a 500.
+    assert call(client, "/v1/customers", {"q": "\x00"}).status_code == 200
+    assert call(client, "/v1/conversations", {"q": "a\x00da"}).status_code == 200
+    ada = waiting_id(client, "ada")
+    r = post(client, f"/v1/conversations/{ada}/replies", {"text": "hi\u0000 there"}, key="nul-key-00001")
+    assert r.status_code == 201 and r.json()["body"] == "hi there" and sender.sent[-1][1] == "hi there"
+
+
+def test_whole_number_floats_are_integers(client):
+    ada_id, conv_id = ada_ids(client)
+    r = post_json(
+        client,
+        f"/v1/customers/{ada_id}/consent",
+        {"kind": "details", "status": "asked", "conversationId": float(conv_id)},
+    )
+    assert r.status_code == 200

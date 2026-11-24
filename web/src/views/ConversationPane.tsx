@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { api, ApiProblem, unwrap, type Category, type Message } from "../api/client";
 import { celebrate, Empty, InlineError, Skeletons, timeLine, useToast } from "../components/common";
+import { ConsentBanner } from "../components/ConsentBanner";
 import { useNow, usePolling } from "../hooks/usePolling";
 import { when } from "../lib/format";
 import { CATEGORY_LABEL, KIND_LABEL, PLATFORMS, PlatformIcon, PlatformPill } from "../lib/platforms";
@@ -200,6 +201,15 @@ export function ConversationPane({
         </div>
       </div>
       <div className={`statusline ${t.cls}`}>{t.long}</div>
+      <ConsentBanner
+        key={`${c.contact.id}:${c.contact.detailsConsent}:${c.contact.marketingConsent}`}
+        c={c}
+        onChanged={() => {
+          void detail.refresh();
+          void msgs.refresh();
+          onChanged();
+        }}
+      />
       <div className="bubbles">
         {cursor && <button className="more" onClick={() => void loadOlder()}>Load older messages</button>}
         {msgs.error !== undefined && !msgs.data && <InlineError onRetry={msgs.refresh} />}

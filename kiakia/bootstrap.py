@@ -23,6 +23,7 @@ from kiakia.application.conversations import (
     ListMessages,
     UpdateConversation,
 )
+from kiakia.application.customers import GetCustomer, ListCustomers, RecordConsent
 from kiakia.application.import_messages import ImportMessages
 from kiakia.application.replies import SendReply
 from kiakia.application.stats import GetInboxStats
@@ -46,7 +47,12 @@ class Services:
             raise ConfigError("Missing setting TELEGRAM_BOT_TOKEN. Copy .env.example to .env and fill it in.")
         source = TelegramSource(TelegramClient(token))
         return ImportMessages(
-            source=source, messages=self.store, rejects=self.store, cursors=self.store, runs=self.store
+            source=source,
+            messages=self.store,
+            rejects=self.store,
+            cursors=self.store,
+            runs=self.store,
+            opt_outs=self.store,  # customers replying STOP leave the offers list (ADR 0007)
         )
 
     def list_waiting_customers(self) -> ListWaitingCustomers:
@@ -72,6 +78,15 @@ class Services:
 
     def send_reply(self) -> SendReply:
         return SendReply(conversations=self.store, replies=self.store, keys=self.store, senders=self.senders)
+
+    def list_customers(self) -> ListCustomers:
+        return ListCustomers(self.store)
+
+    def get_customer(self) -> GetCustomer:
+        return GetCustomer(self.store)
+
+    def record_consent(self) -> RecordConsent:
+        return RecordConsent(self.store)
 
     def check_health(self) -> None:
         """Raises StorageUnavailable if the database can't be reached."""

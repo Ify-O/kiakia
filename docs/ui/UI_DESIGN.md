@@ -255,6 +255,18 @@ In the chat header: a **category** menu (❓ Enquiry, 🛍️ Order, ⚠️ Comp
 A resolved chat leaves the waiting list; **if the customer writes again, it automatically returns to
 Waiting**, so resolving can never hide a new question.
 
+## 8.7 New customers and consent (ADR 0007)
+
+- **Toast** when a customer writes for the first time: "🆕 New customer: Ada (Instagram)".
+- **Banner in the chat** (never a blocking pop-up, so replying keeps working):
+  1. 🆕 *New customer* → **[💬 Ask to save details] [Not now]** ("Not now" records nothing).
+  2. ⏳ *Asked* → **[✅ They said YES] [🚫 They said NO]**.
+  3. YES → small form (name / phone / email, **only what they shared**) → saved with their message as proof.
+  4. NO → "We won't ask again" (the "no" is remembered; nothing extra is stored).
+  5. Saved → a separate **📣 Ask about offers & sales** question; STOP opts out automatically.
+- **👥 Customers** view: list with consent badges and filters; detail with platforms, chats, orders and a
+  **consent history timeline** (what was asked, the answer, when, where, proof).
+
 ## 9. Tech (from ADR 0005)
 
 React + Vite + TypeScript in `web/`. API types are generated from `openapi.yaml`
