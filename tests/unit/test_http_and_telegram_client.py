@@ -88,6 +88,16 @@ def test_rate_limit_uses_server_hint():
     assert sleeps == [7.0]
 
 
+def test_huge_retry_after_is_not_obeyed_blindly():
+    # W2: a server asking for 1 hour must not freeze Kiakia for 1 hour.
+    http, session, sleeps = make_client([response(429, headers={"Retry-After": "3600"})])
+    with pytest.raises(RateLimited) as exc:
+        http.get_json("https://example.test")
+    assert sleeps == []  # did not sleep at all
+    assert exc.value.retry_after == 3600.0  # caller still learns how long to wait
+    assert len(session.calls) == 1
+
+
 def test_rate_limited_forever_raises_rate_limited():
     http, _, _ = make_client([response(429)] * 5)
     with pytest.raises(RateLimited):

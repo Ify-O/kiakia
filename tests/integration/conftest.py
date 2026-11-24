@@ -24,7 +24,7 @@ def test_db_settings():
             host=settings.db_host,
             port=settings.db_port,
             user=settings.db_user,
-            password=settings.db_password,
+            password=settings.db_password.get_secret_value(),
             dbname=settings.db_name,
             connect_timeout=3,
             autocommit=True,
@@ -56,7 +56,7 @@ def conn(test_db_settings):
         host=s.db_host,
         port=s.db_port,
         user=s.db_user,
-        password=s.db_password,
+        password=s.db_password.get_secret_value(),
         dbname=TEST_DB,
         autocommit=True,
     )

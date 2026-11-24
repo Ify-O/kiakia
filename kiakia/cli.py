@@ -26,14 +26,20 @@ from kiakia.domain.errors import KiakiaError
 
 def _store(settings: Settings) -> PostgresStore:
     return PostgresStore(
-        connect(settings.db_host, settings.db_port, settings.db_user, settings.db_password, settings.db_name)
+        connect(
+            settings.db_host,
+            settings.db_port,
+            settings.db_user,
+            settings.db_password.get_secret_value(),
+            settings.db_name,
+        )
     )
 
 
 def cmd_import(args: argparse.Namespace) -> None:
     settings = load_settings()
     store = _store(settings)
-    source = TelegramSource(TelegramClient(settings.telegram_bot_token))
+    source = TelegramSource(TelegramClient(settings.telegram_bot_token.get_secret_value()))
     use_case = ImportMessages(source=source, messages=store, cursors=store, runs=store)
     s = use_case.run(max_records=args.limit)
     print(

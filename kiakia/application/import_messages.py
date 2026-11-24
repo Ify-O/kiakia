@@ -68,14 +68,19 @@ class ImportMessages:
                 summary.saved += self.messages.save_messages(result.messages)  # 1. save
                 self.cursors.set_cursor(self.source.name, result.next_cursor)  # 2. then move on
         except Exception as exc:
-            self.runs.finish_run(
-                run_id,
-                status="failed",
-                seen=summary.seen,
-                saved=summary.saved,
-                bad=summary.bad,
-                error=f"{type(exc).__name__}: {exc}"[:500],
-            )
+            # Recording the failure must never hide the real cause: if the database is
+            # down, finish_run fails too, so log that and re-raise the ORIGINAL error.
+            try:
+                self.runs.finish_run(
+                    run_id,
+                    status="failed",
+                    seen=summary.seen,
+                    saved=summary.saved,
+                    bad=summary.bad,
+                    error=f"{type(exc).__name__}: {exc}"[:500],
+                )
+            except Exception as log_exc:
+                log.error("Could not record failed run %s: %s", run_id, log_exc)
             raise
         self.runs.finish_run(
             run_id, status="succeeded", seen=summary.seen, saved=summary.saved, bad=summary.bad

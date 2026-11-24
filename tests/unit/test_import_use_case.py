@@ -104,6 +104,22 @@ def test_source_failure_is_logged_as_failed_run():
     assert "timed out" in store.runs[0]["error"]
 
 
+def test_original_error_survives_when_logging_the_failure_also_fails():
+    # W1: DB down -> save fails AND finish_run fails. The user must see the first error.
+    from kiakia.domain.errors import StorageUnavailable
+
+    class DownStore(FakeStore):
+        def save_messages(self, messages):
+            raise StorageUnavailable("ORIGINAL: saving failed")
+
+        def finish_run(self, run_id, **kw):
+            raise StorageUnavailable("SECONDARY: could not log the run")
+
+    source = FakeSource([FetchResult(messages=[message(1)], next_cursor="2")])
+    with pytest.raises(StorageUnavailable, match="ORIGINAL"):
+        use_case(source, DownStore()).run()
+
+
 def test_limit_stops_after_n_records():
     source = FakeSource([FetchResult(messages=[message(i)], next_cursor=str(i + 1)) for i in range(10)])
     s = use_case(source, FakeStore()).run(max_records=3)

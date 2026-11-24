@@ -105,6 +105,13 @@ class ResilientHttpClient:
                         f"{label}: HTTP {resp.status_code} (permanent; check the token/request)"
                     )
 
+            if wait_hint is not None and wait_hint > self.retry.max_delay:
+                # Never let a server park us for minutes/hours: give up now and report
+                # how long it asked us to wait, so the caller can decide (e.g. try later).
+                raise RateLimited(
+                    f"{label}: server asked to wait {wait_hint:.0f}s (more than {self.retry.max_delay:.0f}s)",
+                    retry_after=wait_hint,
+                )
             if attempt + 1 >= self.retry.max_attempts:
                 break
             delay = wait_hint if wait_hint is not None else self.retry.delay(attempt)

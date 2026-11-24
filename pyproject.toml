@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
     "psycopg[binary]>=3.3.9",
-    "python-dotenv>=1.2.4",
+    "pydantic-settings>=2.16.3",
     "requests>=2.34.2",
     "sqlalchemy>=2.1.9",
     "tzdata>=2026.6",
@@ -43,7 +43,7 @@ select = [
 ignore = ["RUF001", "RUF002", "RUF003"]  # allow ₦ and typographic characters in text
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S608"]   # assert and test-only SQL are fine in tests
+"tests/**" = ["S101", "S105", "S106", "S608"]  # asserts, fake test passwords and test-only SQL
 "migrations/versions/**" = ["E501"]  # applied migrations are never edited, not even for style
 
 [tool.mypy]
