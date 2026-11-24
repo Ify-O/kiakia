@@ -26,3 +26,7 @@ class RateLimited(SourceUnavailable):
 
 class SourceRejectedRequest(KiakiaError):
     """A permanent error (bad token, bad request). Retrying won't help."""
+
+
+class StorageUnavailable(KiakiaError):
+    """The database could not be reached or refused the operation."""
