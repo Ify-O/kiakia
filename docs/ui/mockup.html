@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiakia Inbox Mockup</title>
+<style>
+  :root {
+    --brand: #0F7B5F; --brand-ink: #ffffff; --accent: #F59E0B;
+    --green: #16A34A; --amber: #D97706; --red: #DC2626;
+    --bg: #F3F5F4; --surface: #FFFFFF; --surface-2: #F8FAF9; --line: #E3E8E6;
+    --text: #111827; --muted: #6B7280; --bubble-in: #FFFFFF; --bubble-out: #DDF3EB;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --brand: #34D399; --brand-ink: #062419; --accent: #FBBF24;
+      --green: #4ADE80; --amber: #FBBF24; --red: #F87171;
+      --bg: #070C14; --surface: #0B1220; --surface-2: #101A2B; --line: #1F2A3C;
+      --text: #E5E7EB; --muted: #9CA3AF; --bubble-in: #1C2A40; --bubble-out: #0E3B2E;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .app { max-width: 1200px; margin: 0 auto; padding: 12px 16px 80px; }
+
+  /* Header */
+  header { display: flex; align-items: center; gap: 12px; padding: 6px 0 14px; flex-wrap: wrap; }
+  .logo { font-weight: 800; font-size: 22px; letter-spacing: -.5px; }
+  .logo span { color: var(--accent); }
+  .tag { color: var(--muted); font-size: 13px; }
+  .live { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 var(--green);
+    animation: pulse 2s infinite; }
+  .dot.off { background: var(--red); animation: none; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5);} 70% { box-shadow: 0 0 0 8px rgba(22,163,74,0);} 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0);} }
+  .demo { font-size: 13px; display: flex; gap: 6px; align-items: center; background: var(--surface);
+    border: 1px dashed var(--accent); border-radius: 10px; padding: 4px 8px; }
+  .demo select { border: 0; background: transparent; }
+
+  /* Banner */
+  .banner { display: none; background: color-mix(in srgb, var(--red) 12%, var(--surface)); color: var(--red);
+    border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); border-radius: 12px; padding: 10px 14px;
+    margin-bottom: 12px; align-items: center; gap: 10px; }
+  .banner.show { display: flex; }
+  .banner button { margin-left: auto; border: 1px solid currentColor; background: transparent; color: inherit;
+    border-radius: 8px; padding: 4px 10px; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .stat { padding: 12px 14px; }
+  .stat b { display: block; font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--muted); }
+  .stat.hot b { color: var(--red); }
+
+  /* Layout */
+  .panes { display: grid; grid-template-columns: 380px 1fr; gap: 14px; min-height: 560px; }
+  .list { display: flex; flex-direction: column; overflow: hidden; }
+  .tabs { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 6px 12px; }
+  .tabs button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  .tabs .count { font-size: 12px; opacity: .85; }
+  .filters { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .filters input { flex: 1; min-width: 0; }
+  .filters input, .filters select { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 7px 10px; }
+  .rows { overflow-y: auto; flex: 1; }
+  .row { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; align-items: center; padding: 11px 12px;
+    border-bottom: 1px solid var(--line); background: transparent; border-left: 0; border-right: 0; border-top: 0;
+    text-align: left; width: 100%; }
+  .row:hover, .row[aria-current="true"] { background: var(--surface-2); }
+  .heat { width: 10px; height: 10px; border-radius: 50%; }
+  .heat.g { background: var(--green); } .heat.a { background: var(--amber); } .heat.r { background: var(--red); }
+  .heat.done { background: transparent; border: 2px solid var(--muted); }
+  .name { font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+  .name small { color: var(--muted); font-weight: 400; }
+  .preview { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .meta { text-align: right; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .meta .timer { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .timer.g { color: var(--green); } .timer.a { color: var(--amber); } .timer.r { color: var(--red); }
+  .badge { display: inline-block; background: var(--red); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-top: 2px; }
+  .chan { font-size: 11px; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; }
+  .more { margin: 10px auto; display: block; border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 6px 14px; }
+
+  /* Skeleton */
+  .skel { height: 58px; margin: 8px 12px; border-radius: 10px;
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--line) 37%, var(--surface-2) 63%); background-size: 400% 100%;
+    animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { 0% { background-position: 100% 0 } 100% { background-position: 0 0 } }
+
+  /* Empty */
+  .empty { text-align: center; padding: 40px 16px; color: var(--muted); }
+  .empty .big { font-size: 40px; }
+
+  /* Conversation */
+  .chat { display: flex; flex-direction: column; overflow: hidden; }
+  .chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .chat-head .back { display: none; border: 0; background: transparent; font-size: 20px; }
+  .chat-head .who { font-weight: 700; }
+  .chat-head .sub { color: var(--muted); font-size: 13px; }
+  .chat-head .right { margin-left: auto; text-align: right; font-size: 13px; }
+  .bubbles { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); }
+  .bubble { max-width: 75%; padding: 8px 12px; border-radius: 16px; box-shadow: var(--shadow); white-space: pre-wrap; word-wrap: break-word; }
+  .bubble.in { background: var(--bubble-in); border: 1px solid var(--line); border-bottom-left-radius: 4px; align-self: flex-start; }
+  .bubble.out { background: var(--bubble-out); border-bottom-right-radius: 4px; align-self: flex-end; }
+  .bubble.sending { opacity: .55; }
+  .bubble .t { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; text-align: right; }
+  .bubble .media { color: var(--muted); font-style: italic; }
+  .composer { border-top: 1px solid var(--line); padding: 10px 12px; }
+  .composer textarea { width: 100%; resize: vertical; min-height: 54px; max-height: 160px; border: 1px solid var(--line);
+    background: var(--surface); border-radius: 10px; padding: 9px 12px; }
+  .composer textarea[aria-invalid="true"] { border-color: var(--red); }
+  .composer .line { display: flex; gap: 10px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .err { color: var(--red); font-size: 13px; min-height: 18px; }
+  .counter { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .send { border: 0; background: var(--brand); color: var(--brand-ink); border-radius: 10px; padding: 8px 16px; font-weight: 700; }
+  .send:disabled { opacity: .5; cursor: progress; }
+  .sim { font-size: 12px; color: var(--muted); }
+  .sim select { font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .hint { font-size: 12px; color: var(--muted); }
+  .notice { margin: 0 14px 10px; padding: 8px 12px; border-radius: 10px; font-size: 13px; display: none; }
+  .notice.show { display: block; }
+  .notice button { margin-top: 6px; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 4px 10px; }
+  .notice.warn { background: color-mix(in srgb, var(--amber) 15%, var(--surface)); color: var(--amber); }
+  .notice.bad { background: color-mix(in srgb, var(--red) 12%, var(--surface)); color: var(--red); }
+
+  .kinds { padding: 12px 14px; margin-top: 14px; }
+  .bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin: 8px 0; background: var(--line); }
+  .bar i { display: block; } .legend { font-size: 13px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(30px); opacity: 0;
+    background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 12px; transition: .25s; z-index: 10; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  .confetti { position: fixed; inset: 0; pointer-events: none; font-size: 28px; }
+  .confetti span { position: absolute; top: -40px; animation: fall 1.6s ease-in forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+
+  /* Phone */
+  @media (max-width: 860px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .panes { grid-template-columns: 1fr; min-height: 0; }
+    .panes.show-chat .list { display: none; }
+    .panes:not(.show-chat) .chat { display: none; }
+    .chat { min-height: 72vh; }
+    .chat-head .back { display: block; }
+    .bubble { max-width: 88%; }
+    .demo { order: 3; width: 100%; }
+    /* While chatting on a phone, give the conversation the whole screen. */
+    .app:has(.panes.show-chat) .stats, .app:has(.panes.show-chat) .kinds { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">Kiakia<span>⚡</span></div>
+    <div class="tag">Every customer, answered fast</div>
+    <div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">Live · updated just now</span></div>
+    <label class="demo" title="Mockup only: shows how each state looks">🎬 Demo state
+      <select id="demoState">
+        <option value="normal">Normal</option>
+        <option value="loading">Loading</option>
+        <option value="empty">Nobody waiting</option>
+        <option value="error">API down</option>
+      </select>
+    </label>
+  </header>
+
+  <div class="banner" id="banner" role="alert">⚠ Can't reach Kiakia. Retrying in <b id="retryIn">10</b>s… <button id="retryNow">Retry now</button></div>
+
+  <section class="stats" id="stats" aria-label="Dashboard numbers"></section>
+
+  <div class="panes" id="panes">
+    <section class="card list" aria-label="Conversations">
+      <div class="tabs" role="tablist">
+        <button data-tab="waiting" aria-pressed="true">⏳ Waiting <span class="count" id="cntWaiting"></span></button>
+        <button data-tab="all" aria-pressed="false">All</button>
+        <button data-tab="answered" aria-pressed="false">Answered</button>
+      </div>
+      <div class="filters">
+        <input id="search" type="search" placeholder="Search name or @username  ( / )" aria-label="Search" maxlength="100">
+        <select id="channel" aria-label="Channel">
+          <option value="">All channels</option><option value="telegram">Telegram</option>
+          <option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option>
+        </select>
+      </div>
+      <div class="rows" id="rows"></div>
+    </section>
+
+    <section class="card chat" id="chat" aria-label="Conversation"></section>
+  </div>
+
+  <section class="card kinds" id="kinds" aria-label="Messages by kind"></section>
+  <p class="hint">Mockup with fake data shaped exactly like <code>openapi.yaml</code> responses. Nothing here talks to a real API or sends real messages.</p>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const MIN = 60 * 1000, NOW = Date.now();
+const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
+
+/* ---- Fake data, in the contract's shapes (ConversationSummary, Message, InboxStats) ---- */
+const conversations = [
+  { id: 1, channel: "telegram", contact: { id: 1, displayName: "Ada Test", username: "ada_test" }, status: "waiting",
+    waitingSince: iso(65*MIN), lastMessageAt: iso(60*MIN), lastReplyAt: null, lastMessagePreview: "Do you have it in red?", unansweredCount: 2 },
+  { id: 3, channel: "telegram", contact: { id: 3, displayName: "Chidi", username: "chidi" }, status: "waiting",
+    waitingSince: iso(12*MIN), lastMessageAt: iso(12*MIN), lastReplyAt: null, lastMessagePreview: "[voice]", unansweredCount: 1 },
+  { id: 6, channel: "whatsapp", contact: { id: 6, displayName: "Tunde", username: null }, status: "waiting",
+    waitingSince: iso(7*MIN), lastMessageAt: iso(7*MIN), lastReplyAt: null, lastMessagePreview: "Can you deliver to Ikeja?", unansweredCount: 1 },
+  { id: 4, channel: "telegram", contact: { id: 4, displayName: "100% Real_Deal", username: null }, status: "waiting",
+    waitingSince: iso(2*MIN), lastMessageAt: iso(2*MIN), lastReplyAt: null, lastMessagePreview: "price?", unansweredCount: 1 },
+  { id: 2, channel: "telegram", contact: { id: 2, displayName: "Bayo", username: null }, status: "answered",
+    waitingSince: null, lastMessageAt: iso(45*MIN), lastReplyAt: iso(45*MIN), lastMessagePreview: "Are you open today?", unansweredCount: 0 },
+  { id: 5, channel: "instagram", contact: { id: 5, displayName: "Ngozi", username: "ngozi.styles" }, status: "answered",
+    waitingSince: null, lastMessageAt: iso(3*60*MIN), lastReplyAt: iso(3*60*MIN), lastMessagePreview: "Thank you!", unansweredCount: 0 },
+];
+const messages = {
+  1: [ { id: 11, direction: "in", kind: "text", body: "Hello, how much is the blue bag?", hasMedia: false, sentAt: iso(65*MIN) },
+       { id: 12, direction: "in", kind: "text", body: "Do you have it in red?", hasMedia: false, sentAt: iso(60*MIN) } ],
+  3: [ { id: 31, direction: "in", kind: "voice", body: null, hasMedia: true, sentAt: iso(12*MIN) } ],
+  6: [ { id: 61, direction: "in", kind: "text", body: "Can you deliver to Ikeja?", hasMedia: false, sentAt: iso(7*MIN) } ],
+  4: [ { id: 41, direction: "in", kind: "image", body: "price?", hasMedia: true, sentAt: iso(2*MIN) } ],
+  2: [ { id: 21, direction: "in", kind: "text", body: "Are you open today?", hasMedia: false, sentAt: iso(50*MIN) },
+       { id: 22, direction: "out", kind: "text", body: "Yes, until 6pm!", hasMedia: false, sentAt: iso(45*MIN) } ],
+  5: [ { id: 51, direction: "out", kind: "text", body: "Your order is on its way 🚚", hasMedia: false, sentAt: iso(3*60*MIN+60000) },
+       { id: 52, direction: "in", kind: "text", body: "Thank you!", hasMedia: false, sentAt: iso(3*60*MIN) } ],
+};
+const kinds = { text: 40, voice: 8, image: 5, sticker: 2 };
+
+/* ---- State ---- */
+let tab = "waiting", selected = null, demo = "normal", lastUpdate = Date.now();
+const drafts = {}; // conversationId -> { text, key }: one Idempotency-Key per draft (ADR 0004)
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const waited = (isoTime) => Math.max(0, Date.now() - new Date(isoTime).getTime());
+const heat = (ms) => ms < 5*MIN ? "g" : ms < 15*MIN ? "a" : "r";
+const heatWord = { g: "just in", a: "waiting a while", r: "waiting too long" };
+function fmt(ms) {
+  const m = Math.floor(ms / MIN);
+  if (m < 1) return Math.floor(ms / 1000) + "s";
+  if (m < 60) return m + " min";
+  const h = Math.floor(m / 60);
+  return h < 48 ? `${h}h ${String(m % 60).padStart(2, "0")}m` : Math.floor(h / 24) + " days";
+}
+const clock = (isoTime) => new Date(isoTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const preview = (c) => c.lastMessagePreview === "[voice]" ? "🎤 Voice note" : c.lastMessagePreview === "[image]" ? "📷 Photo" : (c.lastMessagePreview ?? "");
+const chanLabel = { telegram: "Telegram", whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger", tiktok: "TikTok", email: "Email" };
+
+/* ---- Render: stats ---- */
+function renderStats() {
+  const w = conversations.filter((c) => c.status === "waiting");
+  const oldest = w.reduce((a, c) => (!a || c.waitingSince < a ? c.waitingSince : a), null);
+  const msgs = Object.values(messages).reduce((n, l) => n + l.length, 0) + 43;
+  if (demo === "loading") { $("stats").innerHTML = '<div class="card skel"></div>'.repeat(4); return; }
+  const shownWaiting = demo === "empty" ? 0 : w.length;
+  $("stats").innerHTML = `
+    <div class="card stat ${shownWaiting ? "hot" : ""}"><b>${shownWaiting}</b><small>waiting for a reply</small></div>
+    <div class="card stat"><b data-since="${demo === "empty" || !oldest ? "" : oldest}">${demo === "empty" || !oldest ? "–" : fmt(waited(oldest))}</b><small>${demo === "empty" || !oldest ? "nobody waiting 🎉" : "longest wait"}</small></div>
+    <div class="card stat"><b>${conversations.length}</b><small>conversations</small></div>
+    <div class="card stat"><b>${msgs}</b><small>messages</small></div>`;
+  $("cntWaiting").textContent = shownWaiting;
+  const total = Object.values(kinds).reduce((a, b) => a + b, 0);
+  const colors = { text: "var(--brand)", voice: "var(--accent)", image: "#60A5FA", sticker: "#A78BFA" };
+  $("kinds").innerHTML = `<b>Messages by kind</b><div class="bar">${Object.entries(kinds).map(([k, n]) =>
+    `<i style="width:${100*n/total}%;background:${colors[k]}" title="${k}: ${n}"></i>`).join("")}</div>
+    <div class="legend">${Object.entries(kinds).map(([k, n]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${colors[k]}"></i> ${k} ${n}</span>`).join("")}</div>`;
+}
+
+/* ---- Render: list (GET /v1/conversations with status, q, channel, sort) ---- */
+function filtered() {
+  const q = $("search").value.trim().toLowerCase(), ch = $("channel").value;
+  let list = conversations.filter((c) => (tab === "all" || c.status === tab) && (!ch || c.channel === ch) &&
+    (!q || c.contact.displayName.toLowerCase().includes(q) || (c.contact.username ?? "").toLowerCase().includes(q)));
+  if (tab === "waiting") list.sort((a, b) => a.waitingSince.localeCompare(b.waitingSince)); // sort=longestWaiting
+  else list.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));                // sort=recent
+  return list;
+}
+function renderRows() {
+  if (demo === "loading") { $("rows").innerHTML = '<div class="skel"></div>'.repeat(5); return; }
+  const list = demo === "empty" && tab === "waiting" ? [] : filtered();
+  if (!list.length) {
+    const q = $("search").value.trim();
+    $("rows").innerHTML = q
+      ? `<div class="empty"><div class="big">🔍</div>No chats match "<b>${esc(q)}</b>".<br><button class="more" onclick="clearSearch()">Clear the search</button></div>`
+      : tab === "waiting"
+        ? `<div class="empty"><div class="big">🎉</div><b>Nobody is waiting.</b><br>Every customer has a reply.</div>`
+        : `<div class="empty"><div class="big">📭</div>No conversations here yet.</div>`;
+    return;
+  }
+  $("rows").innerHTML = list.map((c) => {
+    const w = c.status === "waiting", h = w ? heat(waited(c.waitingSince)) : "done";
+    return `<button class="row" data-id="${c.id}" aria-current="${c.id === selected}" aria-label="${esc(c.contact.displayName)}${w ? ", " + heatWord[h] : ", answered"}">
+      <span class="heat ${h}" aria-hidden="true"></span>
+      <span style="min-width:0"><span class="name">${esc(c.contact.displayName)} ${c.contact.username ? `<small>@${esc(c.contact.username)}</small>` : ""}</span>
+        <span class="preview">${esc(preview(c))}</span></span>
+      <span class="meta">${w ? `<span class="timer ${h}" data-since="${c.waitingSince}">⏳ ${fmt(waited(c.waitingSince))}</span><br><span class="badge">${c.unansweredCount} new</span>`
+        : `✅ answered<br><span class="chan">${chanLabel[c.channel]}</span>`}</span>
+    </button>`;
+  }).join("") + (list.length > 5 ? '<button class="more">Load more</button>' : "");
+}
+
+/* ---- Render: conversation (GET /v1/conversations/{id} + /messages) ---- */
+function renderChat() {
+  const c = conversations.find((x) => x.id === selected);
+  if (!c) {
+    $("chat").innerHTML = `<div class="empty"><div class="big">💬</div><b>Pick a conversation</b><br>Start with the longest-waiting customer at the top of the list.</div>`;
+    return;
+  }
+  const d = drafts[c.id] ?? (drafts[c.id] = { text: "", key: crypto.randomUUID() });
+  const w = c.status === "waiting";
+  // Bubble HTML is built on one line: the bubble keeps whitespace (pre-wrap), so template spaces would show.
+  const bubbles = [...(messages[c.id] ?? [])].sort((a, b) => a.sentAt.localeCompare(b.sentAt)).map((m) => {
+    const media = m.hasMedia ? `<span class="media">${m.body ? "<br>" : ""}${m.kind === "voice" ? "🎤 Voice note" : m.kind === "image" ? "📷 Photo" : "📎 File"}</span>` : "";
+    const time = `<span class="t">${clock(m.sentAt)}${m.direction === "out" ? (m.pending ? " · sending…" : " · ✓ sent") : ""}</span>`;
+    return `<div class="bubble ${m.direction}${m.pending ? " sending" : ""}">${m.body ? esc(m.body) : ""}${media}${time}</div>`;
+  }).join("");
+  $("chat").innerHTML = `
+    <div class="chat-head">
+      <button class="back" onclick="back()" aria-label="Back to the list">←</button>
+      <div><div class="who">${esc(c.contact.displayName)}</div>
+        <div class="sub">${c.contact.username ? "@" + esc(c.contact.username) + " · " : ""}${chanLabel[c.channel]}</div></div>
+      <div class="right">${w ? `<span class="timer ${heat(waited(c.waitingSince))}" data-since="${c.waitingSince}">⏳ ${fmt(waited(c.waitingSince))}</span><br><small>${c.unansweredCount} unanswered</small>`
+        : `✅ Answered<br><small>replied ${clock(c.lastReplyAt)}</small>`}</div>
+    </div>
+    <div class="bubbles" id="bubbles">${bubbles}</div>
+    <div class="notice" id="notice"></div>
+    <form class="composer" id="composer" novalidate>
+      <label for="reply" class="hint">Reply to ${esc(c.contact.displayName)} (Enter sends · Shift+Enter = new line)</label>
+      <textarea id="reply" maxlength="4200" placeholder="Type a reply…" aria-describedby="replyErr">${esc(d.text)}</textarea>
+      <div class="line">
+        <span class="err" id="replyErr" aria-live="polite"></span>
+        <span class="counter" id="counter">${d.text.length}/4096</span>
+      </div>
+      <div class="line">
+        <label class="sim">🎬 Simulate:
+          <select id="sim">
+            <option value="ok">Normal send</option>
+            <option value="drop">Wi-Fi drops, app retries (same key)</option>
+            <option value="blocked">Telegram refuses (bot blocked)</option>
+            <option value="unknown">No answer from Telegram (maybe delivered)</option>
+          </select></label>
+        <span class="hint" title="One Idempotency-Key per draft, reused on retries (ADR 0004)">🔑 ${d.key.slice(0, 8)}…</span>
+        <button class="send" id="send" type="submit">Send ➤</button>
+      </div>
+    </form>`;
+  const b = $("bubbles"); b.scrollTop = b.scrollHeight;
+  $("reply").addEventListener("input", (e) => { d.text = e.target.value; $("counter").textContent = `${d.text.length}/4096`;
+    $("counter").style.color = d.text.length > 4096 ? "var(--red)" : ""; setError(""); });
+  $("reply").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  $("composer").addEventListener("submit", (e) => { e.preventDefault(); send(); });
+}
+
+function setError(msg) {
+  const r = $("reply"); if (!r) return;
+  $("replyErr").textContent = msg ? "⚠ " + msg : "";
+  r.setAttribute("aria-invalid", msg ? "true" : "false");
+}
+function notice(kind, msg, offerNewKey = false) {
+  const n = $("notice"); n.className = "notice show " + kind; n.textContent = msg;
+  if (offerNewKey) {
+    const b = document.createElement("button"); b.type = "button";
+    b.textContent = "I checked: it didn't arrive. Send as a new message";
+    b.onclick = () => { const d = drafts[selected]; d.key = crypto.randomUUID(); d.locked = false; renderChat(); toast("New Idempotency-Key created. You can send now."); };
+    n.appendChild(document.createElement("br")); n.appendChild(b);
+  }
+}
+
+/* ---- Sending (POST /v1/conversations/{id}/replies), every outcome from the contract ---- */
+async function send() {
+  const c = conversations.find((x) => x.id === selected), d = drafts[c.id], text = d.text.trim(), sim = $("sim").value;
+  // These mirror the API's 422 Problem Details messages exactly.
+  if (!text) return setError("text: must not be empty or only spaces");
+  if (text.length > 4096) return setError("text: must be at most 4096 characters");
+  if (d.locked) {
+    // Same as the real API: retrying a key whose delivery is unconfirmed returns 409, never a duplicate.
+    return notice("warn", "This reply may already have been delivered, so Kiakia won't send it again with the same key (API: 409). Check the chat on your phone first.", true);
+  }
+  if (c.channel !== "telegram") return notice("bad", `Telegram is the only channel Kiakia can reply on today. (API: 502 "Replying on ${c.channel} is not supported yet.")`);
+
+  $("send").disabled = true; $("send").textContent = "Sending…"; $("reply").readOnly = true;
+  const pending = { id: Date.now(), direction: "out", kind: "text", body: text, hasMedia: false, sentAt: new Date().toISOString(), pending: true };
+  messages[c.id].push(pending); renderBubblesOnly();
+  await new Promise((r) => setTimeout(r, 900));
+
+  if (sim === "blocked") {
+    messages[c.id] = messages[c.id].filter((m) => m !== pending);
+    return failed(c, "bad", "Telegram refused: bot was blocked by the user. Nothing was sent. Your draft is kept. (API: 502 channel-error)");
+  }
+  if (sim === "unknown") {
+    messages[c.id] = messages[c.id].filter((m) => m !== pending);
+    d.locked = true; // the key stays locked, exactly like the API (ADR 0004)
+    return failed(c, "warn", "⚠ We couldn't confirm it was delivered. Check the chat on your phone before sending again. (API: 502 delivery-unknown; retrying this key returns 409, so it's never sent twice)");
+  }
+  pending.pending = false;
+  c.status = "answered"; c.waitingSince = null; c.unansweredCount = 0;
+  c.lastReplyAt = c.lastMessageAt = pending.sentAt;
+  if (sim === "drop") toast(`🔁 The network dropped and the app retried with the same key (${d.key.slice(0, 8)}…). Kiakia answered "already sent", so the customer got it ONCE ✓`);
+  else toast(`✓ Sent to ${c.contact.displayName}`);
+  delete drafts[c.id];
+  renderAll();
+  if (!conversations.some((x) => x.status === "waiting")) celebrate();
+}
+function failed(c, kind, msg) { renderChat(); notice(kind, msg, drafts[c.id]?.locked); }
+function renderBubblesOnly() { const keep = drafts[selected]; renderChat(); drafts[selected] = keep; $("send").disabled = true; $("send").textContent = "Sending…"; }
+
+/* ---- Small helpers ---- */
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 4200); }
+function celebrate() {
+  const box = document.createElement("div"); box.className = "confetti";
+  box.innerHTML = Array.from({ length: 24 }, () => `<span style="left:${Math.random()*100}%;animation-delay:${Math.random()*.6}s">${["🎉","⚡","✅","💚"][Math.floor(Math.random()*4)]}</span>`).join("");
+  document.body.appendChild(box); setTimeout(() => box.remove(), 2400); toast("🎉 Nobody is waiting. Every customer has a reply!");
+}
+function clearSearch() { $("search").value = ""; renderRows(); }
+function back() { $("panes").classList.remove("show-chat"); }
+function renderAll() { renderStats(); renderRows(); renderChat(); }
+
+/* ---- Events ---- */
+document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
+  tab = b.dataset.tab; document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-pressed", x === b)); renderRows(); }));
+let debounce; $("search").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(renderRows, 300); });
+$("channel").addEventListener("change", renderRows);
+$("rows").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (!r) return;
+  selected = Number(r.dataset.id); $("panes").classList.add("show-chat"); renderRows(); renderChat(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement.tagName !== "TEXTAREA" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("search").focus(); }
+  if (e.key === "Escape") back(); });
+$("demoState").addEventListener("change", (e) => { demo = e.target.value; const down = demo === "error";
+  $("banner").classList.toggle("show", down); $("dot").classList.toggle("off", down); renderAll(); });
+$("retryNow").addEventListener("click", () => { $("demoState").value = "normal"; $("demoState").dispatchEvent(new Event("change")); toast("Reconnected ✓"); });
+
+/* Live: timers tick every second; "data" refreshes every 10 s (polling, paused when hidden). */
+setInterval(() => {
+  document.querySelectorAll("[data-since]").forEach((el) => { if (!el.dataset.since) return; const ms = waited(el.dataset.since);
+    el.textContent = (el.classList.contains("timer") ? "⏳ " : "") + fmt(ms);
+    if (el.classList.contains("timer")) el.className = "timer " + heat(ms); });
+  const s = Math.round((Date.now() - lastUpdate) / 1000);
+  $("liveText").textContent = demo === "error" ? "Offline" : `Live · updated ${s < 2 ? "just now" : s + "s ago"}`;
+  if (demo === "error") { const r = $("retryIn"); r.textContent = r.textContent > 1 ? r.textContent - 1 : 10; }
+}, 1000);
+setInterval(() => { if (!document.hidden && demo !== "error") { lastUpdate = Date.now(); renderStats(); renderRows(); } }, 10000);
+
+renderAll();
+</script>
+</body>
+</html>
