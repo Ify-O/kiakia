@@ -1,6 +1,6 @@
 """PostgreSQL adapter: the ONLY place in Kiakia that reads or writes the database.
 
-Implements the MessageRepository, CursorStore, ImportRunLog and StatsQuery ports.
+Implements the MessageRepository, RejectStore, CursorStore, ImportRunLog and StatsQuery ports.
 Uses psycopg 3, the current PostgreSQL driver for Python.
 
 - All SQL is parameterised (%s placeholders), never built from strings.
@@ -9,9 +9,11 @@ Uses psycopg 3, the current PostgreSQL driver for Python.
   is wrapped in an explicit `with conn.transaction():` block.
 """
 
+import json
 from typing import Any
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from kiakia.domain.errors import StorageUnavailable
 from kiakia.domain.models import (
@@ -20,6 +22,7 @@ from kiakia.domain.models import (
     InboxStats,
     Message,
     MessageKind,
+    Reject,
     RunStatus,
     WaitingCustomer,
 )
@@ -40,6 +43,11 @@ def connect(host: str, port: int, user: str, password: str, dbname: str) -> psyc
         # Keep the message short: it can contain host/port but never the password.
         first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise StorageUnavailable(f"cannot connect to PostgreSQL at {host}:{port}: {first_line}") from exc
+
+
+def _json_dumps(obj: Any) -> str:
+    """JSON for the dead-letter table; anything exotic is stored as text rather than lost."""
+    return json.dumps(obj, default=str)
 
 
 def _one(cur: psycopg.Cursor) -> tuple[Any, ...]:
@@ -165,6 +173,27 @@ class PostgresStore:
             WaitingCustomer(name, Channel(channel), chat_id, since, preview)
             for name, channel, chat_id, since, preview in rows
         ]
+
+    # ---------- RejectStore (dead letter) ----------
+
+    def save_rejects(self, source: str, rejects: list[Reject]) -> int:
+        """Keep bad records with their original JSON. Same (source, ref) is stored once."""
+        if not rejects:
+            return 0
+        new = 0
+        try:
+            with self._conn.transaction(), self._conn.cursor() as cur:
+                for r in rejects:
+                    cur.execute(
+                        """INSERT INTO rejected_updates (source, ref, reason, raw)
+                           VALUES (%s, %s, %s, %s)
+                           ON CONFLICT (source, ref) DO NOTHING""",
+                        (source, r.ref, r.reason, Jsonb(r.raw, dumps=_json_dumps)),
+                    )
+                    new += cur.rowcount
+        except psycopg.OperationalError as exc:
+            raise StorageUnavailable(f"saving rejected records failed: {exc}") from exc
+        return new
 
     # ---------- CursorStore ----------
 

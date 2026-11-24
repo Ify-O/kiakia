@@ -121,7 +121,7 @@ def parse_updates(updates: Iterable[Any]) -> FetchResult:
 
     for update in updates:
         if not isinstance(update, dict):
-            result.rejects.append(Reject("update is not an object"))
+            result.rejects.append(Reject("update is not an object", raw=update))
             continue
         update_id = update.get("update_id")
         if _is_int(update_id):
@@ -132,7 +132,7 @@ def parse_updates(updates: Iterable[Any]) -> FetchResult:
                 raise _Bad("missing or invalid update_id")
             message = parse_update(update)
         except (_Bad, ValueError) as exc:
-            result.rejects.append(Reject(str(exc), ref))
+            result.rejects.append(Reject(str(exc), ref, raw=update))
             continue
         if message is None:
             result.ignored += 1

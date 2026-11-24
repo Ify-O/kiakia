@@ -7,7 +7,7 @@ import psycopg
 import pytest
 
 from kiakia.adapters.postgres.repository import PostgresStore
-from kiakia.domain.models import Channel, Direction, Message, MessageKind, RunStatus, Sender
+from kiakia.domain.models import Channel, Direction, Message, MessageKind, Reject, RunStatus, Sender
 
 pytestmark = pytest.mark.integration
 
@@ -138,3 +138,18 @@ def test_database_rejects_an_unknown_channel(conn):
             "INSERT INTO contact_identities (contact_id, channel, external_id) VALUES (%s, 'myspace', '1')",
             (cur.fetchone()[0],),
         )
+
+
+def test_rejects_are_kept_with_their_raw_json_and_not_duplicated(conn):
+    store = PostgresStore(conn)
+    bad = [
+        Reject("missing message.date", "500007", raw={"update_id": 500007, "message": {"text": "hi"}}),
+        Reject("update is not an object", None, raw="garbage"),
+    ]
+    assert store.save_rejects("telegram", bad) == 2
+    assert store.save_rejects("telegram", bad[:1]) == 0  # same update again: stored once
+    with conn.cursor() as cur:
+        cur.execute("SELECT ref, reason, raw FROM rejected_updates ORDER BY id")
+        rows = cur.fetchall()
+    assert rows[0] == ("500007", "missing message.date", {"update_id": 500007, "message": {"text": "hi"}})
+    assert rows[1][2] == "garbage"

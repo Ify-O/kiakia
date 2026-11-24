@@ -33,7 +33,9 @@ class Services:
         if not token:
             raise ConfigError("Missing setting TELEGRAM_BOT_TOKEN. Copy .env.example to .env and fill it in.")
         source = TelegramSource(TelegramClient(token))
-        return ImportMessages(source=source, messages=self.store, cursors=self.store, runs=self.store)
+        return ImportMessages(
+            source=source, messages=self.store, rejects=self.store, cursors=self.store, runs=self.store
+        )
 
     def list_waiting_customers(self) -> ListWaitingCustomers:
         return ListWaitingCustomers(self.store)

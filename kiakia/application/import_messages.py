@@ -5,9 +5,9 @@ works unchanged for every future channel and can be tested with fakes.
 
 Order matters for reliability ("save first, confirm second"):
   1. fetch after the stored cursor
-  2. save the messages (one transaction)
+  2. save the good messages (one transaction) and keep the bad ones (dead letter)
   3. only THEN store the new cursor
-If we crash between 2 and 3, the next run re-fetches the same messages and
+If we crash before 3, the next run re-fetches the same messages and
 the idempotent save ignores the duplicates. Nothing is lost, nothing is doubled.
 """
 
@@ -15,7 +15,7 @@ import logging
 from dataclasses import dataclass
 
 from kiakia.domain.models import RunStatus
-from kiakia.domain.ports import CursorStore, ImportRunLog, MessageRepository, MessageSource
+from kiakia.domain.ports import CursorStore, ImportRunLog, MessageRepository, MessageSource, RejectStore
 
 log = logging.getLogger(__name__)
 
@@ -35,12 +35,14 @@ class ImportMessages:
         self,
         source: MessageSource,
         messages: MessageRepository,
+        rejects: RejectStore,
         cursors: CursorStore,
         runs: ImportRunLog,
         batch_size: int = 100,
     ):
         self.source = source
         self.messages = messages
+        self.rejects = rejects
         self.cursors = cursors
         self.runs = runs
         self.batch_size = batch_size
@@ -67,8 +69,9 @@ class ImportMessages:
                 for reject in result.rejects:
                     log.warning("Skipped bad record %s: %s", reject.ref, reject.reason)
 
-                summary.saved += self.messages.save_messages(result.messages)  # 1. save
-                self.cursors.set_cursor(self.source.name, result.next_cursor)  # 2. then move on
+                summary.saved += self.messages.save_messages(result.messages)  # 1. save good records
+                self.rejects.save_rejects(self.source.name, result.rejects)  # 2. keep bad ones (W5)
+                self.cursors.set_cursor(self.source.name, result.next_cursor)  # 3. only then move on
         except Exception as exc:
             # Recording the failure must never hide the real cause: if the database is
             # down, finish_run fails too, so log that and re-raise the ORIGINAL error.

@@ -7,6 +7,7 @@ Every channel adapter converts its own format into these classes.
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Any
 
 
 class Channel(StrEnum):
@@ -71,10 +72,11 @@ class Message:
 
 @dataclass(frozen=True)
 class Reject:
-    """A record we could not use, and why. Counted and logged, never fatal."""
+    """A record we could not use, and why. Counted, logged and kept (dead letter), never fatal."""
 
     reason: str
     ref: str | None = None  # e.g. the update id, to find it again
+    raw: Any = field(default=None, compare=False)  # the original payload, for inspection/replay
 
 
 @dataclass

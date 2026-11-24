@@ -24,7 +24,7 @@ def cmd_import(args: argparse.Namespace) -> None:
         s = services.import_messages().run(max_records=args.limit)
     print(
         f"Imported from {s.source}: {s.seen} updates in {s.batches} batch(es) -> "
-        f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad."
+        f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad (kept in rejected_updates)."
     )
 
 
