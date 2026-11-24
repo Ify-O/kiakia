@@ -15,7 +15,16 @@ import logging
 from dataclasses import dataclass
 
 from kiakia.domain.models import RunStatus
-from kiakia.domain.ports import CursorStore, ImportRunLog, MessageRepository, MessageSource, RejectStore
+from kiakia.domain.ports import (
+    CursorStore,
+    ImportRunLog,
+    MessageRepository,
+    MessageSource,
+    OptOutRecorder,
+    RejectStore,
+)
+
+from .customers import is_opt_out_message
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +48,7 @@ class ImportMessages:
         cursors: CursorStore,
         runs: ImportRunLog,
         batch_size: int = 100,
+        opt_outs: OptOutRecorder | None = None,
     ):
         self.source = source
         self.messages = messages
@@ -46,6 +56,7 @@ class ImportMessages:
         self.cursors = cursors
         self.runs = runs
         self.batch_size = batch_size
+        self.opt_outs = opt_outs
 
     def run(self, max_records: int | None = None, max_batches: int = 1000) -> ImportSummary:
         summary = ImportSummary(source=self.source.name)
@@ -71,6 +82,10 @@ class ImportMessages:
 
                 summary.saved += self.messages.save_messages(result.messages)  # 1. save good records
                 self.rejects.save_rejects(self.source.name, result.rejects)  # 2. keep bad ones (W5)
+                if self.opt_outs is not None:  # a customer replying STOP leaves the offers list (ADR 0007)
+                    for m in result.messages:
+                        if is_opt_out_message(m) and self.opt_outs.withdraw_marketing(m):
+                            log.info("Customer opted out of offers (STOP) on %s", m.channel.value)
                 self.cursors.set_cursor(self.source.name, result.next_cursor)  # 3. only then move on
         except Exception as exc:
             # Recording the failure must never hide the real cause: if the database is

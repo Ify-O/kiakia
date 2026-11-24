@@ -5,17 +5,23 @@ Contract tests check that what these produce validates against openapi.yaml.
 """
 
 from datetime import UTC, datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from pydantic.alias_generators import to_camel
 
 from kiakia.domain.models import (
     Category,
     Channel,
     ChannelStats,
+    ConsentEvent,
+    ConsentKind,
+    ConsentStatus,
     ConversationDetail,
     ConversationStatus,
     ConversationSummary,
+    Customer,
+    CustomerDetail,
     Direction,
     FeedItem,
     InboxStats,
@@ -41,6 +47,8 @@ class ContactOut(ApiModel):
     id: int
     display_name: str
     username: str | None
+    details_consent: ConsentStatus
+    marketing_consent: ConsentStatus
 
 
 class ConversationSummaryOut(ApiModel):
@@ -61,7 +69,13 @@ class ConversationSummaryOut(ApiModel):
         return cls(
             id=c.id,
             channel=c.channel,
-            contact=ContactOut(id=c.contact_id, display_name=c.contact_name, username=c.contact_username),
+            contact=ContactOut(
+                id=c.contact_id,
+                display_name=c.contact_name,
+                username=c.contact_username,
+                details_consent=c.contact_details_consent,
+                marketing_consent=c.contact_marketing_consent,
+            ),
             status=c.status,
             waiting_since=_utc_or_none(c.waiting_since),
             last_message_at=_utc(c.last_message_at),
@@ -194,7 +208,13 @@ class FeedItemOut(ApiModel):
     def from_domain(cls, f: FeedItem) -> "FeedItemOut":
         return cls(
             message=MessageOut.from_domain(f.message),
-            contact=ContactOut(id=f.contact_id, display_name=f.contact_name, username=f.contact_username),
+            contact=ContactOut(
+                id=f.contact_id,
+                display_name=f.contact_name,
+                username=f.contact_username,
+                details_consent=f.contact_details_consent,
+                marketing_consent=f.contact_marketing_consent,
+            ),
         )
 
 
@@ -226,3 +246,150 @@ class ReplyIn(ApiModel):
 class HealthOut(ApiModel):
     status: str = "ok"
     database: str = "ok"
+
+
+# ---------- Customers + consent (ADR 0007) ----------
+
+PHONE_PATTERN = r"^\+?[0-9][0-9 ()-]{5,19}$"
+EMAIL_PATTERN = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$"  # same as openapi.yaml
+
+
+class CustomerChannelOut(ApiModel):
+    channel: Channel
+    username: str | None
+
+
+class CustomerOut(ApiModel):
+    id: int
+    display_name: str
+    phone: str | None
+    email: str | None
+    details_consent: ConsentStatus
+    marketing_consent: ConsentStatus
+    first_channel: Channel
+    channels: list[CustomerChannelOut]
+    first_contact_at: datetime
+    last_contact_at: datetime
+    conversation_count: int
+    order_count: int
+
+    @classmethod
+    def from_domain(cls, c: Customer) -> "CustomerOut":
+        return cls(
+            id=c.id,
+            display_name=c.display_name,
+            phone=c.phone,
+            email=c.email,
+            details_consent=c.details_consent,
+            marketing_consent=c.marketing_consent,
+            first_channel=c.first_channel,
+            channels=[CustomerChannelOut(channel=x.channel, username=x.username) for x in c.channels],
+            first_contact_at=_utc(c.first_contact_at),
+            last_contact_at=_utc(c.last_contact_at),
+            conversation_count=c.conversation_count,
+            order_count=c.order_count,
+        )
+
+
+class CustomerConversationOut(ApiModel):
+    id: int
+    channel: Channel
+    status: ConversationStatus
+    last_message_at: datetime
+
+
+class ConsentEventOut(ApiModel):
+    id: int
+    kind: ConsentKind
+    status: ConsentStatus
+    channel: Channel | None
+    wording: str | None
+    evidence_message_id: int | None
+    recorded_at: datetime
+
+    @classmethod
+    def from_domain(cls, e: ConsentEvent) -> "ConsentEventOut":
+        return cls(
+            id=e.id,
+            kind=e.kind,
+            status=e.status,
+            channel=e.channel,
+            wording=e.wording,
+            evidence_message_id=e.evidence_message_id,
+            recorded_at=_utc(e.recorded_at),
+        )
+
+
+class CustomerDetailOut(CustomerOut):
+    conversations: list[CustomerConversationOut]
+    consent_history: list[ConsentEventOut]
+
+    @classmethod
+    def from_detail(cls, d: CustomerDetail) -> "CustomerDetailOut":
+        return cls(
+            **CustomerOut.from_domain(d.customer).model_dump(),
+            conversations=[
+                CustomerConversationOut(
+                    id=c.id, channel=c.channel, status=c.status, last_message_at=_utc(c.last_message_at)
+                )
+                for c in d.conversations
+            ],
+            consent_history=[ConsentEventOut.from_domain(e) for e in d.history],
+        )
+
+
+class CustomerPageOut(ApiModel):
+    data: list[CustomerOut]
+    page: PageInfoOut
+
+    @classmethod
+    def from_domain(cls, page: Page[Customer], limit: int) -> "CustomerPageOut":
+        return cls(
+            data=[CustomerOut.from_domain(c) for c in page.items],
+            page=PageInfoOut(limit=limit, next_cursor=page.next_cursor),
+        )
+
+
+class CustomerDetailsIn(ApiModel):
+    """Only what the customer chose to share (same rules as CustomerDetails in openapi.yaml)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100, pattern=r"\S")
+    phone: str | None = Field(default=None, min_length=7, max_length=20, pattern=PHONE_PATTERN)
+    email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
+
+    @field_validator("name", "phone", "email", mode="before")
+    @classmethod
+    def _not_null(cls, value: object) -> object:
+        # Leaving a field out is fine; sending it as null is not (the contract says string).
+        if value is None:
+            raise ValueError("must not be null (leave it out instead)")
+        return value
+
+
+class ConsentRecordIn(ApiModel):
+    """POST /customers/{id}/consent body. Strict types: "5" is not an integer."""
+
+    kind: ConsentKind
+    status: Literal["asked", "granted", "declined", "withdrawn"]
+    conversation_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    wording: str | None = Field(default=None, min_length=1, max_length=1000)
+    details: CustomerDetailsIn | None = None
+
+    @field_validator("conversation_id", "wording", "details", mode="before")
+    @classmethod
+    def _not_null(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("must not be null (leave it out instead)")
+        return value
+
+    @field_validator("conversation_id", mode="before")
+    @classmethod
+    def _json_integer(cls, value: object) -> object:
+        # JSON Schema: 1.0 IS an integer; "1" (text) and true are not.
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError("must be an integer")
+        if isinstance(value, float):
+            if not value.is_integer():
+                raise ValueError("must be an integer")
+            return int(value)
+        return value

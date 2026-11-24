@@ -125,6 +125,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List customers
+         * @description Everyone who has written to the business, most recent contact first, with their consent status.
+         */
+        get: operations["listCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/customers/{customerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The customer's id. */
+                customerId: components["parameters"]["CustomerId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get one customer
+         * @description The customer with their platforms, conversations and full consent history.
+         */
+        get: operations["getCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/customers/{customerId}/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The customer's id. */
+                customerId: components["parameters"]["CustomerId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a consent question or answer
+         * @description Records that we **asked**, or that the customer **granted**, **declined** or **withdrew** consent,
+         *     for `details` ("save my details") or `marketing` ("send me offers"). Pass the `conversationId`
+         *     where it happened: its latest customer message is kept as evidence.
+         *     - `details` (name/phone/email) may only be sent with `kind: details, status: granted`.
+         *     - Declining or withdrawing `details` erases phone and email.
+         *     - Recording the customer's current status again changes nothing (safe to repeat).
+         */
+        post: operations["recordConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/stats": {
         parameters: {
             query?: never;
@@ -206,6 +277,8 @@ export interface components {
              * @example ada_test
              */
             username: string | null;
+            detailsConsent: components["schemas"]["ConsentStatus"];
+            marketingConsent: components["schemas"]["ConsentStatus"];
         };
         /** @description Fields shared by ConversationSummary and ConversationDetail (not used on its own). */
         ConversationFields: {
@@ -292,6 +365,116 @@ export interface components {
             messagesReceived: number;
             waiting: number;
             responseRate: number | null;
+        };
+        /**
+         * @description `unknown` = never asked (a 🆕 new customer). `asked` = question sent, no answer recorded yet.
+         *     `granted` / `declined` = the customer's answer. `withdrawn` = granted before, then taken back
+         *     (e.g. they replied STOP). See docs/adr/0007.
+         * @enum {string}
+         */
+        ConsentStatus: "unknown" | "asked" | "granted" | "declined" | "withdrawn";
+        /**
+         * @description `details` = save my name/phone/email. `marketing` = send me offers and sales.
+         * @enum {string}
+         */
+        ConsentKind: "details" | "marketing";
+        CustomerChannel: {
+            channel: components["schemas"]["Channel"];
+            username: string | null;
+        };
+        /** @description Fields shared by Customer and CustomerDetail (not used on its own). */
+        CustomerFields: {
+            /** Format: int64 */
+            id: number;
+            displayName: string;
+            /** @description Only present when the customer agreed to save their details. */
+            phone: string | null;
+            /** @description Only present when the customer agreed to save their details. */
+            email: string | null;
+            detailsConsent: components["schemas"]["ConsentStatus"];
+            marketingConsent: components["schemas"]["ConsentStatus"];
+            firstChannel: components["schemas"]["Channel"];
+            channels: components["schemas"]["CustomerChannel"][];
+            /** Format: date-time */
+            firstContactAt: string;
+            /** Format: date-time */
+            lastContactAt: string;
+            conversationCount: number;
+            /** @description Conversations labelled `order`. */
+            orderCount: number;
+        };
+        Customer: components["schemas"]["CustomerFields"];
+        CustomerConversation: {
+            /** Format: int64 */
+            id: number;
+            channel: components["schemas"]["Channel"];
+            status: components["schemas"]["ConversationStatus"];
+            /** Format: date-time */
+            lastMessageAt: string;
+        };
+        ConsentEvent: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ConsentKind"];
+            status: components["schemas"]["ConsentStatus"];
+            channel: components["schemas"]["Channel"] | null;
+            /** @description The exact question we asked (for `asked`). */
+            wording: string | null;
+            /**
+             * Format: int64
+             * @description The customer's message that answered (or STOP), kept as proof.
+             */
+            evidenceMessageId: number | null;
+            /** Format: date-time */
+            recordedAt: string;
+        };
+        CustomerDetail: components["schemas"]["CustomerFields"] & {
+            conversations: components["schemas"]["CustomerConversation"][];
+            /** @description Oldest first. Append-only. */
+            consentHistory: components["schemas"]["ConsentEvent"][];
+        };
+        CustomerPage: {
+            data: components["schemas"]["Customer"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * @description Either an answer that includes the customer's details (only possible for `kind: details,
+         *     status: granted`), or any other consent record without details (docs/adr/0007).
+         */
+        ConsentRecord: components["schemas"]["ConsentRecordWithDetails"] | components["schemas"]["ConsentRecordPlain"];
+        ConsentRecordPlain: {
+            kind: components["schemas"]["ConsentKind"];
+            /** @enum {string} */
+            status: "asked" | "granted" | "declined" | "withdrawn";
+            /**
+             * Format: int64
+             * @description Where it happened (gives the channel and the evidence message).
+             */
+            conversationId?: number;
+            /** @description The exact question sent (for `asked`). */
+            wording?: string;
+        };
+        /** @description The customer said YES to "save my details" and shared some of them. */
+        ConsentRecordWithDetails: {
+            /** @enum {string} */
+            kind: "details";
+            /** @enum {string} */
+            status: "granted";
+            /** Format: int64 */
+            conversationId?: number;
+            wording?: string;
+            details: components["schemas"]["CustomerDetails"];
+        };
+        /** @description Only what the customer chose to share. Only allowed with `kind: details, status: granted`. */
+        CustomerDetails: {
+            name?: string;
+            /** @example +234 803 123 4567 */
+            phone?: string;
+            /**
+             * @description A practical email check (letters, digits and . _ % + - before the @; a domain with a dot after it).
+             * @example ada@example.com
+             */
+            email?: string;
         };
         ReplyCreate: {
             /** @description The reply. Must contain at least one non-space character (`\\S`); leading and trailing spaces are removed. Max 4096 characters (Telegram's limit). */
@@ -526,6 +709,8 @@ export interface components {
     parameters: {
         /** @description The conversation's id. */
         ConversationId: number;
+        /** @description The customer's id. */
+        CustomerId: number;
         /** @description Only include items at or after this time (RFC 3339, e.g. 2026-11-24T00:00:00Z). Must be before `to`. */
         From: string;
         /** @description Only include items before this time (exclusive). */
@@ -761,6 +946,113 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listCustomers: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive search in name, username, phone or email. */
+                q?: string;
+                /** @description Only customers with this "save my details" status. */
+                detailsConsent?: components["schemas"]["ConsentStatus"];
+                /** @description Only customers with this "send me offers" status. */
+                marketingConsent?: components["schemas"]["ConsentStatus"];
+                /** @description Only customers we know on this channel. */
+                channel?: components["schemas"]["Channel"];
+                /** @description How many items to return (1–100). */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque value from `page.nextCursor` of the previous page. Don't build or change it. Any value the server didn't issue for this list (and sort order) returns 400. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of customers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The customer's id. */
+                customerId: components["parameters"]["CustomerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    recordConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The customer's id. */
+                customerId: components["parameters"]["CustomerId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "details",
+                 *       "status": "granted",
+                 *       "conversationId": 42,
+                 *       "details": {
+                 *         "name": "Ada Test",
+                 *         "phone": "+234 803 123 4567",
+                 *         "email": "ada@example.com"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ConsentRecord"];
+            };
+        };
+        responses: {
+            /** @description The customer after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

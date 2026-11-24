@@ -100,6 +100,8 @@ Then open <http://localhost:8000/docs> to browse and try the API (it shows `open
 | `POST /v1/conversations/{id}/replies` | Reply to the customer through Telegram. **Idempotent**: send an `Idempotency-Key` header; retries never message the customer twice |
 | `PATCH /v1/conversations/{id}` | Mark resolved / reopen, set a category (enquiry, order, complaint, other) |
 | `GET /v1/messages` | All messages across conversations, newest first (filter by platform, direction, dates) |
+| `GET /v1/customers`, `GET /v1/customers/{id}` | The customer list (search, consent filters) and one customer with their consent history |
+| `POST /v1/customers/{id}/consent` | Record that we asked, or the customer's YES / NO / withdrawal (details only with a YES) |
 | `GET /v1/stats` | Dashboard numbers for a period: response rate, typical reply time, per platform, per category |
 | `GET /health` | API + database health |
 
@@ -125,6 +127,7 @@ npm run dev          # open http://localhost:5173
 | 📊 Dashboard | Red/green "customers waiting" light, longest wait, response rate, typical reply time, messages per platform, categories |
 | 📥 Inbox | Filter by status, platform, date, category, search; open a chat; reply; mark resolved; label it |
 | 📡 Messages by platform | Per-platform numbers and every message, newest first |
+| 👥 Customers | Everyone who wrote, their platforms, "first came from", saved details **only with their YES**, consent badges and the full consent history ([ADR 0007](docs/adr/0007-customer-list-with-recorded-consent.md)) |
 
 Web checks: `npm run check:api` (types match the contract), `npm run typecheck`, `npm test`, `npm run build`.
 

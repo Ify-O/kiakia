@@ -24,12 +24,21 @@ from kiakia.domain.models import (
     Channel,
     ChannelStats,
     ClaimOutcome,
+    ConsentChange,
+    ConsentEvent,
+    ConsentKind,
+    ConsentStatus,
     ConversationChanges,
     ConversationDetail,
     ConversationFilter,
     ConversationSort,
     ConversationStatus,
     ConversationSummary,
+    Customer,
+    CustomerChannel,
+    CustomerConversation,
+    CustomerDetail,
+    CustomerFilter,
     Direction,
     FeedFilter,
     FeedItem,
@@ -86,6 +95,7 @@ _CONVERSATIONS_CTE = """
 WITH conv0 AS (
     SELECT cv.id, cv.channel, cv.external_chat_id, cv.created_at, cv.category, cv.resolved_at,
            ct.id AS contact_id, ct.display_name, ident.username,
+           ct.details_consent, ct.marketing_consent,
            GREATEST(cv.last_inbound_at, cv.last_outbound_at) AS last_message_at,
            cv.last_outbound_at,
            unanswered.waiting_since,
@@ -123,7 +133,7 @@ conv AS (
 _CONVERSATION_COLUMNS = """
 SELECT id, channel, external_chat_id, contact_id, display_name, username, waiting, resolved,
        waiting_since, last_message_at, last_outbound_at, preview, unanswered_count, category,
-       resolved_at, created_at
+       resolved_at, details_consent, marketing_consent, created_at
 FROM conv
 """
 
@@ -155,7 +165,8 @@ _INSERT_REPLY = sql.SQL(
 # All messages with their customer (the feed). Columns are qualified: m = messages.
 _FEED_SELECT = sql.SQL(
     """SELECT m.id, m.conversation_id, m.direction, m.kind, m.body, m.media_ref IS NOT NULL,
-              m.sent_at, m.channel, ct.id, ct.display_name, ident.username
+              m.sent_at, m.channel, ct.id, ct.display_name, ident.username,
+              ct.details_consent, ct.marketing_consent
        FROM messages m
        JOIN conversations cv ON cv.id = m.conversation_id
        JOIN contacts ct ON ct.id = cv.contact_id
@@ -210,6 +221,87 @@ _STATS_MEDIAN_FIRST_RESPONSE = """WITH m AS (
 IDEMPOTENCY_TTL = "24 hours"
 
 
+# ---- Customers (ADR 0007). One row per contact with what the customer list shows. ----
+_CUSTOMERS_CTE = """
+WITH cust AS (
+    SELECT ct.id, ct.display_name, ct.phone, ct.email, ct.details_consent, ct.marketing_consent,
+           (SELECT cv.channel FROM conversations cv WHERE cv.contact_id = ct.id
+             ORDER BY cv.created_at, cv.id LIMIT 1) AS first_channel,
+           (SELECT min(m.sent_at) FROM messages m JOIN conversations cv ON cv.id = m.conversation_id
+             WHERE cv.contact_id = ct.id) AS first_contact_at,
+           (SELECT max(GREATEST(cv.last_inbound_at, cv.last_outbound_at)) FROM conversations cv
+             WHERE cv.contact_id = ct.id) AS last_contact_at,
+           (SELECT count(*) FROM conversations cv WHERE cv.contact_id = ct.id) AS conversation_count,
+           (SELECT count(*) FROM conversations cv WHERE cv.contact_id = ct.id AND cv.category = 'order')
+               AS order_count,
+           (SELECT coalesce(json_agg(json_build_object('channel', ci.channel, 'username', ci.username)
+                                     ORDER BY ci.id), '[]'::json)
+              FROM contact_identities ci WHERE ci.contact_id = ct.id) AS channels,
+           (SELECT string_agg(coalesce(ci.username, ''), ' ') FROM contact_identities ci
+             WHERE ci.contact_id = ct.id) AS usernames
+    FROM contacts ct
+)
+"""
+_CUSTOMER_COLUMNS = """
+SELECT id, display_name, phone, email, details_consent, marketing_consent, first_channel, channels,
+       first_contact_at, last_contact_at, conversation_count, order_count
+FROM cust WHERE last_contact_at IS NOT NULL
+"""
+_CUSTOMER_BY_ID = _CUSTOMERS_CTE + _CUSTOMER_COLUMNS + " AND id = %s"
+_CUSTOMER_CONVERSATIONS_SELECT = (
+    "SELECT id, channel, waiting, resolved, last_message_at FROM conv WHERE contact_id = %s "
+    "ORDER BY last_message_at DESC, id DESC"
+)
+_CUSTOMER_CONVERSATIONS = _CONVERSATIONS_CTE + _CUSTOMER_CONVERSATIONS_SELECT
+_CONSENT_HISTORY = (
+    "SELECT id, kind, status, channel, wording, evidence_message_id, recorded_at FROM consent_events "
+    "WHERE contact_id = %s ORDER BY recorded_at, id"
+)
+_INSERT_CONSENT_EVENT = (
+    "INSERT INTO consent_events (contact_id, kind, status, channel, wording, evidence_message_id) "
+    "VALUES (%s, %s, %s, %s, %s, %s)"
+)
+# Two fixed statements per kind: no column names are ever built from input.
+_SET_DETAILS_CONSENT = "UPDATE contacts SET details_consent = %s WHERE id = %s"
+_SET_DETAILS_GRANTED = (
+    "UPDATE contacts SET details_consent = 'granted', display_name = coalesce(%s, display_name), "
+    "phone = coalesce(%s, phone), email = coalesce(%s, email) WHERE id = %s"
+)
+_ERASE_DETAILS = "UPDATE contacts SET details_consent = %s, phone = NULL, email = NULL WHERE id = %s"
+_SET_MARKETING_CONSENT = "UPDATE contacts SET marketing_consent = %s WHERE id = %s"
+
+
+def _customer(row: tuple[Any, ...]) -> Customer:
+    (
+        cid,
+        name,
+        phone,
+        email,
+        details,
+        marketing,
+        first_channel,
+        channels,
+        first_at,
+        last_at,
+        convs,
+        orders,
+    ) = row
+    return Customer(
+        id=cid,
+        display_name=name,
+        phone=phone,
+        email=email,
+        details_consent=ConsentStatus(details),
+        marketing_consent=ConsentStatus(marketing),
+        first_channel=Channel(first_channel),
+        channels=[CustomerChannel(Channel(c["channel"]), c["username"]) for c in channels],
+        first_contact_at=first_at,
+        last_contact_at=last_at,
+        conversation_count=convs,
+        order_count=orders,
+    )
+
+
 def _stored(row: tuple[Any, ...]) -> StoredMessage:
     i, c, d, k, b, m, t, ch = row
     return StoredMessage(
@@ -241,6 +333,8 @@ def _summary(row: tuple[Any, ...]) -> ConversationSummary:
         unanswered,
         category,
         resolved_at,
+        details_consent,
+        marketing_consent,
         _created,
     ) = row
     if waiting:
@@ -264,11 +358,19 @@ def _summary(row: tuple[Any, ...]) -> ConversationSummary:
         unanswered_count=unanswered,
         category=Category(category) if category else None,
         resolved_at=resolved_at,
+        contact_details_consent=ConsentStatus(details_consent),
+        contact_marketing_consent=ConsentStatus(marketing_consent),
     )
+
+
+def _text(value: str | None) -> str | None:
+    """PostgreSQL can't store the NUL character in text; drop it from anything we store."""
+    return value.replace("\x00", "") if value is not None else None
 
 
 def _like_pattern(text: str) -> str:
     """Search text as a LIKE pattern, with LIKE's own wildcards escaped (so '100%' is literal)."""
+    text = text.replace("\x00", "")
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
 
@@ -302,22 +404,25 @@ class PostgresStore:
         row = cur.fetchone()
         if row:
             contact_id: int = row[0]
-            # Keep the latest name/username the customer uses.
+            # Keep the latest name/username the customer uses, unless they saved their own name
+            # with consent (ADR 0007): then their chosen name wins over the platform's.
             cur.execute(
-                "UPDATE contacts SET display_name = %s WHERE id = %s",
-                (m.sender.display_name, contact_id),
+                "UPDATE contacts SET display_name = %s WHERE id = %s AND details_consent <> 'granted'",
+                (_text(m.sender.display_name), contact_id),
             )
             cur.execute(
                 "UPDATE contact_identities SET username = %s WHERE channel = %s AND external_id = %s",
-                (m.sender.username, m.channel.value, m.sender.external_id),
+                (_text(m.sender.username), m.channel.value, m.sender.external_id),
             )
             return contact_id
-        cur.execute("INSERT INTO contacts (display_name) VALUES (%s) RETURNING id", (m.sender.display_name,))
+        cur.execute(
+            "INSERT INTO contacts (display_name) VALUES (%s) RETURNING id", (_text(m.sender.display_name),)
+        )
         new_id: int = _one(cur)[0]
         cur.execute(
             "INSERT INTO contact_identities (contact_id, channel, external_id, username) "
             "VALUES (%s, %s, %s, %s)",
-            (new_id, m.channel.value, m.sender.external_id, m.sender.username),
+            (new_id, m.channel.value, m.sender.external_id, _text(m.sender.username)),
         )
         return new_id
 
@@ -349,7 +454,7 @@ class PostgresStore:
                 m.external_message_id,
                 m.direction.value,
                 m.kind.value,
-                m.body,
+                _text(m.body),
                 m.media_ref,
                 m.sent_at,
             ),
@@ -470,10 +575,177 @@ class PostgresStore:
             cur.execute(query, params)
             return [
                 FeedItem(
-                    message=_stored(row[:8]), contact_id=row[8], contact_name=row[9], contact_username=row[10]
+                    message=_stored(row[:8]),
+                    contact_id=row[8],
+                    contact_name=row[9],
+                    contact_username=row[10],
+                    contact_details_consent=ConsentStatus(row[11]),
+                    contact_marketing_consent=ConsentStatus(row[12]),
                 )
                 for row in cur.fetchall()
             ]
+
+    # ---------- CustomerStore + OptOutRecorder (ADR 0007) ----------
+
+    def list_customers(self, filters: CustomerFilter, limit: int, after: Keyset | None) -> list[Customer]:
+        conditions: list[sql.Composable] = []
+        params: list[Any] = []
+        if filters.search:
+            pattern = _like_pattern(filters.search)
+            conditions.append(
+                sql.SQL("(display_name ILIKE %s OR usernames ILIKE %s OR phone ILIKE %s OR email ILIKE %s)")
+            )
+            params += [pattern] * 4
+        if filters.details_consent is not None:
+            conditions.append(sql.SQL("details_consent = %s"))
+            params.append(filters.details_consent.value)
+        if filters.marketing_consent is not None:
+            conditions.append(sql.SQL("marketing_consent = %s"))
+            params.append(filters.marketing_consent.value)
+        if filters.channel is not None:
+            conditions.append(
+                sql.SQL(
+                    "EXISTS (SELECT 1 FROM contact_identities ci "
+                    "WHERE ci.contact_id = cust.id AND ci.channel = %s)"
+                )
+            )
+            params.append(filters.channel.value)
+        if after is not None:
+            conditions.append(sql.SQL("(last_contact_at, id) < (%s, %s)"))
+            params += [after[0], after[1]]
+        extra = sql.SQL(" AND ") + sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("")
+        query = sql.Composed(
+            [
+                sql.SQL(_CUSTOMERS_CTE + _CUSTOMER_COLUMNS),
+                extra,
+                sql.SQL(" ORDER BY last_contact_at DESC, id DESC LIMIT %s"),
+            ]
+        )
+        params.append(limit)
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            return [_customer(row) for row in cur.fetchall()]
+
+    def get_customer(self, customer_id: int) -> CustomerDetail | None:
+        with self._conn.cursor() as cur:
+            cur.execute(_CUSTOMER_BY_ID, (customer_id,))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            cur.execute(_CUSTOMER_CONVERSATIONS, (customer_id,))
+            conversations = [
+                CustomerConversation(
+                    id=i,
+                    channel=Channel(ch),
+                    status=ConversationStatus.WAITING
+                    if waiting
+                    else ConversationStatus.RESOLVED
+                    if resolved
+                    else ConversationStatus.ANSWERED,
+                    last_message_at=last,
+                )
+                for i, ch, waiting, resolved, last in cur.fetchall()
+            ]
+            cur.execute(_CONSENT_HISTORY, (customer_id,))
+            history = [
+                ConsentEvent(
+                    id=i,
+                    kind=ConsentKind(k),
+                    status=ConsentStatus(st),
+                    channel=Channel(ch) if ch else None,
+                    wording=w,
+                    evidence_message_id=ev,
+                    recorded_at=at,
+                )
+                for i, k, st, ch, w, ev, at in cur.fetchall()
+            ]
+        return CustomerDetail(customer=_customer(row), conversations=conversations, history=history)
+
+    def conversation_evidence(
+        self, customer_id: int, conversation_id: int
+    ) -> tuple[Channel, int | None] | None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """SELECT cv.channel,
+                          (SELECT m.id FROM messages m WHERE m.conversation_id = cv.id AND m.direction = 'in'
+                            ORDER BY m.sent_at DESC, m.id DESC LIMIT 1)
+                   FROM conversations cv WHERE cv.id = %s AND cv.contact_id = %s""",
+                (conversation_id, customer_id),
+            )
+            row = cur.fetchone()
+        return (Channel(row[0]), row[1]) if row else None
+
+    def record_consent(self, change: ConsentChange) -> None:
+        details = change.details
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute("SELECT id FROM contacts WHERE id = %s FOR UPDATE", (change.customer_id,))
+            _one(cur)
+            cur.execute(
+                _INSERT_CONSENT_EVENT,
+                (
+                    change.customer_id,
+                    change.kind.value,
+                    change.status.value,
+                    change.channel.value if change.channel else None,
+                    _text(change.wording),
+                    change.evidence_message_id,
+                ),
+            )
+            if change.kind is ConsentKind.MARKETING:
+                cur.execute(_SET_MARKETING_CONSENT, (change.new_current.value, change.customer_id))
+            elif change.new_current is ConsentStatus.GRANTED:
+                cur.execute(
+                    _SET_DETAILS_GRANTED,
+                    (
+                        _text(details.name) if details else None,
+                        details.phone if details else None,
+                        details.email if details else None,
+                        change.customer_id,
+                    ),
+                )
+            elif change.new_current in (ConsentStatus.DECLINED, ConsentStatus.WITHDRAWN):
+                cur.execute(
+                    _ERASE_DETAILS, (change.new_current.value, change.customer_id)
+                )  # erase phone/email
+            else:
+                cur.execute(_SET_DETAILS_CONSENT, (change.new_current.value, change.customer_id))
+
+    def withdraw_marketing(self, message: Message) -> bool:
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT contact_id FROM contact_identities WHERE channel = %s AND external_id = %s",
+                (message.channel.value, message.sender.external_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return False
+            contact_id = row[0]
+            cur.execute(
+                "SELECT id FROM messages "
+                "WHERE channel = %s AND external_chat_id = %s AND external_message_id = %s",
+                (message.channel.value, message.external_chat_id, message.external_message_id),
+            )
+            evidence = cur.fetchone()
+            cur.execute(
+                "SELECT 1 FROM consent_events WHERE contact_id = %s AND kind = 'marketing' "
+                "AND status = 'withdrawn' AND evidence_message_id IS NOT DISTINCT FROM %s",
+                (contact_id, evidence[0] if evidence else None),
+            )
+            if cur.fetchone() is not None:
+                return False  # same STOP imported twice: already recorded (idempotent)
+            cur.execute(
+                _INSERT_CONSENT_EVENT,
+                (
+                    contact_id,
+                    "marketing",
+                    "withdrawn",
+                    message.channel.value,
+                    None,
+                    evidence[0] if evidence else None,
+                ),
+            )
+            cur.execute(_SET_MARKETING_CONSENT, ("withdrawn", contact_id))
+        return True
 
     # ---------- ConversationUpdater ----------
 
@@ -507,7 +779,7 @@ class PostgresStore:
             )
             channel, chat_id = _one(cur)
             cur.execute(
-                _INSERT_REPLY, (conversation_id, channel, chat_id, external_message_id, text, sent_at)
+                _INSERT_REPLY, (conversation_id, channel, chat_id, external_message_id, _text(text), sent_at)
             )
             stored = _stored(_one(cur))
             cur.execute(_TOUCH_OUTBOUND, (sent_at, conversation_id))

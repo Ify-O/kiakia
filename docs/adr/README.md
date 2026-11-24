@@ -14,5 +14,6 @@ changed first, and an ADR explains why.**
 | [0004](0004-reply-write-endpoint-idempotency.md) | The write endpoint is "send a reply", made idempotent with `Idempotency-Key` | Accepted |
 | [0005](0005-fastapi-and-react.md) | FastAPI for the API; React + Vite + TypeScript for the UI, typed from the contract | Accepted |
 | [0006](0006-dashboard-filters-resolve-categories.md) | Date filters, per-platform stats + response rate, all-messages list, resolve + categories | Accepted |
+| [0007](0007-customer-list-with-recorded-consent.md) | A light customer list, with consent asked in the chat and recorded (NDPA, platform rules) | Accepted |
 
 Template: Status · Context · Decision · Consequences.

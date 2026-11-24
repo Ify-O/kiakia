@@ -61,7 +61,7 @@ class SendReply:
         self.senders = senders
 
     def run(self, conversation_id: int, text: str, idempotency_key: str) -> ReplyResult:
-        text = text.strip()
+        text = text.replace("\x00", "").strip()  # NUL can't be stored or sent meaningfully
         if not text:
             raise InvalidInput("text", "must not be empty")
         if len(text) > MAX_LENGTH:

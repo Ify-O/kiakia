@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, isOutage, unwrap, type Channel } from "./api/client";
-import { ThemeToggle } from "./components/common";
+import { ThemeToggle, useToast } from "./components/common";
 import { usePolling } from "./hooks/usePolling";
+import { PLATFORMS } from "./lib/platforms";
+import { Customers } from "./views/Customers";
 import { Dashboard } from "./views/Dashboard";
 import { Inbox } from "./views/Inbox";
 import { Platforms } from "./views/Platforms";
 
-type View = "dash" | "inbox" | "platforms";
+type View = "dash" | "inbox" | "platforms" | "customers";
 
 export function App() {
   const [view, setView] = useState<View>("dash");
@@ -14,6 +16,29 @@ export function App() {
   const [platform, setPlatform] = useState<Channel | null>(null);
   // Health drives the "● Live" dot and the "can't reach Kiakia" banner (an error state from the design).
   const health = usePolling(async () => unwrap(await api.GET("/health")), "health");
+  const toast = useToast();
+
+  // 🆕 New-customer alert (ADR 0007): a waiting chat we haven't seen before, from someone never asked.
+  const seen = useRef<Set<number> | null>(null);
+  const waiting = usePolling(
+    async () => unwrap(await api.GET("/v1/conversations", { params: { query: { status: "waiting", limit: 50 } } })),
+    "new-customers",
+  );
+  useEffect(() => {
+    const rows = waiting.data?.data;
+    if (!rows) return;
+    if (seen.current === null) {
+      seen.current = new Set(rows.map((c) => c.id)); // first load: don't alert about old chats
+      return;
+    }
+    for (const c of rows) {
+      if (seen.current.has(c.id)) continue;
+      seen.current.add(c.id);
+      if (c.contact.detailsConsent === "unknown") {
+        toast(`🆕 New customer: ${c.contact.displayName} (${PLATFORMS[c.channel].label}). Open the chat to welcome them.`);
+      }
+    }
+  }, [waiting.data, toast]);
   const down = health.error !== undefined && isOutage(health.error);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -55,7 +80,7 @@ export function App() {
         <ThemeToggle />
       </header>
       <nav className="views" aria-label="Views">
-        {([["dash", "📊 Dashboard"], ["inbox", "📥 Inbox"], ["platforms", "📡 Messages by platform"]] as const).map(([v, label]) => (
+        {([["dash", "📊 Dashboard"], ["inbox", "📥 Inbox"], ["customers", "👥 Customers"], ["platforms", "📡 By platform"]] as const).map(([v, label]) => (
           <button key={v} aria-current={view === v ? "page" : "false"} onClick={() => setView(v)}>{label}</button>
         ))}
       </nav>
@@ -71,6 +96,7 @@ export function App() {
       )}
       {view === "inbox" && <Inbox selected={selected} onSelect={setSelected} />}
       {view === "platforms" && <Platforms channel={platform} onChannel={setPlatform} onOpen={open} />}
+      {view === "customers" && <Customers onOpenChat={open} />}
     </div>
   );
 }
