@@ -121,3 +121,20 @@ def test_inbox_stats(conn):
     st = store.inbox_stats()
     assert (st.contacts, st.conversations, st.messages) == (2, 2, 3)
     assert st.by_kind == {MessageKind.TEXT: 2, MessageKind.VOICE: 1}
+
+
+def test_database_accepts_every_channel_the_domain_knows(conn):
+    # Guards against the domain enum and the DB CHECK constraint drifting apart (W15).
+    store = PostgresStore(conn)
+    for i, channel in enumerate(Channel):
+        store.save_messages([replace(msg(f"c{i}", 1, i, Sender(f"s{i}", "X")), channel=channel)])
+    assert count(conn, "messages") == len(Channel)
+
+
+def test_database_rejects_an_unknown_channel(conn):
+    with pytest.raises(psycopg.errors.CheckViolation), conn.cursor() as cur:
+        cur.execute("INSERT INTO contacts (display_name) VALUES ('x') RETURNING id")
+        cur.execute(
+            "INSERT INTO contact_identities (contact_id, channel, external_id) VALUES (%s, 'myspace', '1')",
+            (cur.fetchone()[0],),
+        )
