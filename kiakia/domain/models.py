@@ -141,6 +141,21 @@ class ConversationStatus(StrEnum):
     RESOLVED = "resolved"  # marked done; a new customer message makes it WAITING again (ADR 0006)
 
 
+class ConsentStatus(StrEnum):
+    """Customer consent (ADR 0007). UNKNOWN = never asked (a new customer)."""
+
+    UNKNOWN = "unknown"
+    ASKED = "asked"
+    GRANTED = "granted"
+    DECLINED = "declined"
+    WITHDRAWN = "withdrawn"
+
+
+class ConsentKind(StrEnum):
+    DETAILS = "details"  # save my name / phone / email
+    MARKETING = "marketing"  # send me offers and sales
+
+
 class Category(StrEnum):
     """A light label staff give a conversation (ADR 0006: not a CRM)."""
 
@@ -197,6 +212,8 @@ class ConversationSummary:
     unanswered_count: int
     category: Category | None = None
     resolved_at: datetime | None = None
+    contact_details_consent: ConsentStatus = ConsentStatus.UNKNOWN
+    contact_marketing_consent: ConsentStatus = ConsentStatus.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -228,6 +245,8 @@ class FeedItem:
     contact_id: int
     contact_name: str
     contact_username: str | None
+    contact_details_consent: ConsentStatus = ConsentStatus.UNKNOWN
+    contact_marketing_consent: ConsentStatus = ConsentStatus.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -274,3 +293,85 @@ class ClaimOutcome(StrEnum):
 class IdempotencyClaim:
     outcome: ClaimOutcome
     message_id: int | None = None  # for REPLAY: the stored reply to return again
+
+
+# ---------- Customers + recorded consent (ADR 0007) ----------
+
+
+@dataclass(frozen=True)
+class CustomerChannel:
+    channel: Channel
+    username: str | None
+
+
+@dataclass(frozen=True)
+class Customer:
+    id: int
+    display_name: str
+    phone: str | None  # only while details consent is granted
+    email: str | None
+    details_consent: ConsentStatus
+    marketing_consent: ConsentStatus
+    first_channel: Channel
+    channels: list[CustomerChannel]
+    first_contact_at: datetime
+    last_contact_at: datetime
+    conversation_count: int
+    order_count: int
+
+
+@dataclass(frozen=True)
+class CustomerConversation:
+    id: int
+    channel: Channel
+    status: ConversationStatus
+    last_message_at: datetime
+
+
+@dataclass(frozen=True)
+class ConsentEvent:
+    id: int
+    kind: ConsentKind
+    status: ConsentStatus
+    channel: Channel | None
+    wording: str | None
+    evidence_message_id: int | None
+    recorded_at: datetime
+
+
+@dataclass(frozen=True)
+class CustomerDetail:
+    customer: Customer
+    conversations: list[CustomerConversation]
+    history: list[ConsentEvent]
+
+
+@dataclass(frozen=True)
+class CustomerFilter:
+    search: str | None = None
+    details_consent: ConsentStatus | None = None
+    marketing_consent: ConsentStatus | None = None
+    channel: Channel | None = None
+
+
+@dataclass(frozen=True)
+class CustomerDetailsInput:
+    """What the customer chose to share. None = not shared."""
+
+    name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+
+
+@dataclass(frozen=True)
+class ConsentChange:
+    """One consent event to record, plus the resulting current status."""
+
+    customer_id: int
+    kind: ConsentKind
+    status: ConsentStatus  # the event (asked / granted / declined / withdrawn)
+    new_current: ConsentStatus  # what the customer's current status becomes
+    channel: Channel | None = None
+    wording: str | None = None
+    evidence_message_id: int | None = None
+    details: CustomerDetailsInput | None = None

@@ -47,7 +47,8 @@ def _is_int(value: Any) -> TypeGuard[int]:
 def _clean(value: Any) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
+    # NUL characters can't be stored in PostgreSQL text, and are never meaningful in a chat.
+    text = str(value).replace("\x00", "").strip()
     return text or None
 
 

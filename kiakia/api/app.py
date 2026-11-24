@@ -19,13 +19,16 @@ from fastapi import Depends, FastAPI, Header, Path, Query, Response
 from kiakia.bootstrap import Services
 from kiakia.bootstrap import app as services_for
 from kiakia.config import Settings, load_settings
-from kiakia.domain.errors import InvalidQuery
+from kiakia.domain.errors import InvalidInput, InvalidQuery
 from kiakia.domain.models import (
     Category,
     Channel,
+    ConsentStatus,
     ConversationFilter,
     ConversationSort,
     ConversationStatus,
+    CustomerDetailsInput,
+    CustomerFilter,
     Direction,
     FeedFilter,
     Period,
@@ -34,9 +37,12 @@ from kiakia.domain.ports import MessageSender
 
 from .errors import install_error_handlers
 from .schemas import (
+    ConsentRecordIn,
     ConversationDetailOut,
     ConversationPageOut,
     ConversationUpdateIn,
+    CustomerDetailOut,
+    CustomerPageOut,
     FeedPageOut,
     HealthOut,
     InboxStatsOut,
@@ -48,6 +54,7 @@ from .schemas import (
 CONTRACT_PATH = FilePath(__file__).resolve().parents[2] / "openapi.yaml"
 
 ConversationId = Annotated[int, Path(alias="conversationId", ge=1, le=2**63 - 1)]
+CustomerId = Annotated[int, Path(alias="customerId", ge=1, le=2**63 - 1)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(min_length=1, max_length=500)]
 From = Annotated[str | None, Query(alias="from", min_length=1, max_length=40)]
@@ -186,6 +193,53 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
         response.headers["Location"] = f"/v1/conversations/{conversation_id}/messages"
         response.headers["Idempotent-Replayed"] = "true" if result.replayed else "false"
         return MessageOut.from_domain(result.message)
+
+    # ---------- Customers + consent (ADR 0007) ----------
+
+    @api.get("/v1/customers", response_model=CustomerPageOut, response_model_by_alias=True)
+    def list_customers(
+        services: ServicesDep,
+        q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+        details_consent: Annotated[ConsentStatus | None, Query(alias="detailsConsent")] = None,
+        marketing_consent: Annotated[ConsentStatus | None, Query(alias="marketingConsent")] = None,
+        channel: Channel | None = None,
+        limit: Limit = 20,
+        cursor: Cursor = None,
+    ) -> CustomerPageOut:
+        filters = CustomerFilter(
+            search=q, details_consent=details_consent, marketing_consent=marketing_consent, channel=channel
+        )
+        return CustomerPageOut.from_domain(services.list_customers().run(filters, limit, cursor), limit)
+
+    @api.get("/v1/customers/{customerId}", response_model=CustomerDetailOut, response_model_by_alias=True)
+    def get_customer(services: ServicesDep, customer_id: CustomerId) -> CustomerDetailOut:
+        return CustomerDetailOut.from_detail(services.get_customer().run(customer_id))
+
+    @api.post(
+        "/v1/customers/{customerId}/consent", response_model=CustomerDetailOut, response_model_by_alias=True
+    )
+    def record_consent(
+        services: ServicesDep, customer_id: CustomerId, body: ConsentRecordIn
+    ) -> CustomerDetailOut:
+        details = None
+        if body.details is not None:
+            given = body.details.model_fields_set
+            if not given:
+                raise InvalidInput("details", "share at least one of: name, phone, email")
+            details = CustomerDetailsInput(
+                name=body.details.name.strip() if body.details.name else None,
+                phone=body.details.phone,
+                email=body.details.email,
+            )
+        detail = services.record_consent().run(
+            customer_id,
+            body.kind,
+            ConsentStatus(body.status),
+            conversation_id=body.conversation_id,
+            wording=body.wording,
+            details=details,
+        )
+        return CustomerDetailOut.from_detail(detail)
 
     @api.get("/v1/stats", response_model=InboxStatsOut, response_model_by_alias=True)
     def get_stats(services: ServicesDep, from_: From = None, to: To = None) -> InboxStatsOut:

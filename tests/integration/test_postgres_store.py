@@ -319,3 +319,117 @@ def test_stats_definitions_from_adr_0006(conn):
     later = store.inbox_stats(Period(T0 + timedelta(minutes=5), None))  # only Bayo's message + the reply
     assert (later.conversations, later.messages, later.waiting) == (1, 2, 1)  # waiting = right now
     assert later.median_first_response_seconds == 6 * 60  # the reply was sent in the period
+
+
+# ---------- ADR 0007: customers + recorded consent ----------
+
+
+def _consent(store, customer_id, kind, status, new_current=None, details=None, evidence=None, wording=None):
+    from kiakia.domain.models import ConsentChange, ConsentKind, ConsentStatus
+
+    store.record_consent(
+        ConsentChange(
+            customer_id=customer_id,
+            kind=ConsentKind(kind),
+            status=ConsentStatus(status),
+            new_current=ConsentStatus(new_current or status),
+            channel=Channel.TELEGRAM,
+            wording=wording,
+            evidence_message_id=evidence,
+            details=details,
+        )
+    )
+
+
+def test_customer_list_shows_platforms_counts_and_consent(conn):
+    from kiakia.domain.models import Category, ConsentStatus, ConversationChanges, CustomerFilter
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA), msg("9002", 1, 5, BAYO)])
+    store.update_conversation(
+        _conversation_id(conn, "9001"), ConversationChanges(category=Category.ORDER, category_set=True)
+    )
+    customers = store.list_customers(CustomerFilter(), 10, None)
+    assert [c.display_name for c in customers] == ["Bayo", "Ada Test"]  # most recent first
+    ada = customers[1]
+    assert ada.first_channel is Channel.TELEGRAM and ada.channels[0].username == "ada_test"
+    assert (ada.conversation_count, ada.order_count) == (1, 1)
+    assert ada.details_consent is ConsentStatus.UNKNOWN and ada.phone is None
+    assert [c.display_name for c in store.list_customers(CustomerFilter(search="ada_t"), 10, None)] == [
+        "Ada Test"
+    ]
+
+
+def test_granted_details_are_saved_and_declining_erases_them(conn):
+    from kiakia.domain.models import ConsentStatus, CustomerDetailsInput
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA, "YES")])
+    from kiakia.domain.models import CustomerFilter
+
+    ada_id = store.list_customers(CustomerFilter(), 1, None)[0].id
+    _consent(store, ada_id, "details", "asked", wording="Can we save your details?")
+    _consent(
+        store,
+        ada_id,
+        "details",
+        "granted",
+        details=CustomerDetailsInput(name="Ada Okafor", phone="+2348031234567", email="ada@example.com"),
+    )
+    detail = store.get_customer(ada_id)
+    c = detail.customer
+    assert (c.display_name, c.phone, c.email, c.details_consent) == (
+        "Ada Okafor",
+        "+2348031234567",
+        "ada@example.com",
+        ConsentStatus.GRANTED,
+    )
+    assert [e.status for e in detail.history] == [ConsentStatus.ASKED, ConsentStatus.GRANTED]
+    assert detail.history[0].wording == "Can we save your details?"
+
+    store.save_messages(
+        [msg("9001", 2, 1, ADA, "hi again")]
+    )  # platform name must not overwrite the saved one
+    assert store.get_customer(ada_id).customer.display_name == "Ada Okafor"
+
+    _consent(store, ada_id, "details", "withdrawn")
+    c = store.get_customer(ada_id).customer
+    assert (c.phone, c.email, c.details_consent) == (None, None, ConsentStatus.WITHDRAWN)
+
+
+def test_database_refuses_details_without_consent(conn):
+    # Defence in depth: even a buggy app can't store a phone number without consent.
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA)])
+    with pytest.raises(psycopg.errors.CheckViolation), conn.cursor() as cur:
+        cur.execute("UPDATE contacts SET phone = '+2348031234567'")
+
+
+def test_stop_reply_withdraws_offers_once(conn):
+    from kiakia.domain.models import ConsentStatus, CustomerFilter
+
+    store = PostgresStore(conn)
+    stop = msg("9001", 2, 1, ADA, "STOP")
+    store.save_messages([msg("9001", 1, 0, ADA), stop])
+    ada_id = store.list_customers(CustomerFilter(), 1, None)[0].id
+    _consent(store, ada_id, "marketing", "granted")
+    assert store.withdraw_marketing(stop) is True
+    assert store.withdraw_marketing(stop) is False  # same STOP imported again: no duplicate event
+    detail = store.get_customer(ada_id)
+    assert detail.customer.marketing_consent is ConsentStatus.WITHDRAWN
+    assert detail.history[-1].evidence_message_id is not None
+    assert [
+        c.display_name
+        for c in store.list_customers(CustomerFilter(marketing_consent=ConsentStatus.WITHDRAWN), 10, None)
+    ] == ["Ada Test"]
+
+
+def test_conversation_evidence_only_for_own_conversations(conn):
+    from kiakia.domain.models import CustomerFilter
+
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA, "yes please"), msg("9002", 1, 1, BAYO)])
+    ada = next(c for c in store.list_customers(CustomerFilter(), 10, None) if c.display_name == "Ada Test")
+    channel, evidence = store.conversation_evidence(ada.id, _conversation_id(conn, "9001"))
+    assert channel is Channel.TELEGRAM and evidence is not None
+    assert store.conversation_evidence(ada.id, _conversation_id(conn, "9002")) is None  # Bayo's chat

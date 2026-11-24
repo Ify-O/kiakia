@@ -864,6 +864,14 @@ components:
           $ref: "#/components/schemas/PageInfo"
 
     ConsentRecord:
+      description: |
+        Either an answer that includes the customer's details (only possible for `kind: details,
+        status: granted`), or any other consent record without details (docs/adr/0007).
+      anyOf:
+        - $ref: "#/components/schemas/ConsentRecordWithDetails"
+        - $ref: "#/components/schemas/ConsentRecordPlain"
+
+    ConsentRecordPlain:
       type: object
       additionalProperties: false
       required: [kind, status]
@@ -883,6 +891,27 @@ components:
           minLength: 1
           maxLength: 1000
           description: The exact question sent (for `asked`).
+
+    ConsentRecordWithDetails:
+      type: object
+      additionalProperties: false
+      required: [kind, status, details]
+      description: The customer said YES to "save my details" and shared some of them.
+      properties:
+        kind:
+          type: string
+          enum: [details]
+        status:
+          type: string
+          enum: [granted]
+        conversationId:
+          type: integer
+          format: int64
+          minimum: 1
+        wording:
+          type: string
+          minLength: 1
+          maxLength: 1000
         details:
           $ref: "#/components/schemas/CustomerDetails"
 
@@ -905,8 +934,10 @@ components:
           example: "+234 803 123 4567"
         email:
           type: string
-          format: email
           maxLength: 254
+          description: A practical email check (letters, digits and . _ % + - before the @; a domain with a dot after it).
+          pattern: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$"
+          example: ada@example.com
 
     ReplyCreate:
       type: object
