@@ -27,8 +27,10 @@ class Settings:
     @property
     def database_url(self) -> str:
         """SQLAlchemy-style URL, used by Alembic for migrations."""
-        return (f"postgresql+psycopg://{self.db_user}:{self.db_password}"
-                f"@{self.db_host}:{self.db_port}/{self.db_name}")
+        return (
+            f"postgresql+psycopg://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
 
     def __repr__(self) -> str:  # never print secrets by accident
         return f"Settings(db={self.db_user}@{self.db_host}:{self.db_port}/{self.db_name}, telegram_token=***)"
@@ -57,6 +59,7 @@ def load_settings(require_telegram: bool = True) -> Settings:
         db_host=os.getenv("POSTGRES_HOST", "localhost"),
         db_port=int(os.getenv("POSTGRES_PORT", "55432")),
         business_tz=_timezone(os.getenv("BUSINESS_TIMEZONE", "Africa/Lagos")),
-        telegram_bot_token=_required("TELEGRAM_BOT_TOKEN") if require_telegram
+        telegram_bot_token=_required("TELEGRAM_BOT_TOKEN")
+        if require_telegram
         else os.getenv("TELEGRAM_BOT_TOKEN", ""),
     )

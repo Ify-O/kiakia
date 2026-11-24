@@ -39,10 +39,10 @@ def header_retry_after(resp: requests.Response) -> float | None:
 
 @dataclass
 class RetryPolicy:
-    max_attempts: int = 5          # 1 try + 4 retries
-    base_delay: float = 1.0        # 1s, 2s, 4s, 8s ...
+    max_attempts: int = 5  # 1 try + 4 retries
+    base_delay: float = 1.0  # 1s, 2s, 4s, 8s ...
     max_delay: float = 30.0
-    jitter: float = 0.5            # +/- 50% randomness so retries don't all line up
+    jitter: float = 0.5  # +/- 50% randomness so retries don't all line up
 
     def delay(self, attempt: int, rng: Callable[[], float] = random.random) -> float:
         raw = min(self.max_delay, self.base_delay * float(2**attempt))
@@ -53,12 +53,12 @@ class ResilientHttpClient:
     def __init__(
         self,
         *,
-        timeout: tuple[float, float] = (5.0, 30.0),             # (connect, read) seconds
+        timeout: tuple[float, float] = (5.0, 30.0),  # (connect, read) seconds
         retry: RetryPolicy | None = None,
-        min_interval: float = 1.0,                # at most ~1 request per second
+        min_interval: float = 1.0,  # at most ~1 request per second
         retry_after_reader: RetryAfterReader = header_retry_after,
         session: requests.Session | None = None,
-        sleep: Callable[[float], None] = time.sleep,          # injectable for tests
+        sleep: Callable[[float], None] = time.sleep,  # injectable for tests
         clock: Callable[[], float] = time.monotonic,
     ):
         self.timeout = timeout
@@ -78,8 +78,7 @@ class ResilientHttpClient:
         if wait > 0:
             self._sleep(wait)
 
-    def get_json(self, url: str, *, params: dict[str, Any] | None = None,
-                 label: str = "request") -> Any:
+    def get_json(self, url: str, *, params: dict[str, Any] | None = None, label: str = "request") -> Any:
         """GET a URL and return parsed JSON. `label` is what appears in logs and errors."""
         last_problem = "unknown error"
         for attempt in range(self.retry.max_attempts):
@@ -103,13 +102,20 @@ class ResilientHttpClient:
                     wait_hint = self.retry_after_reader(resp)
                 else:
                     raise SourceRejectedRequest(
-                        f"{label}: HTTP {resp.status_code} (permanent; check the token/request)")
+                        f"{label}: HTTP {resp.status_code} (permanent; check the token/request)"
+                    )
 
             if attempt + 1 >= self.retry.max_attempts:
                 break
             delay = wait_hint if wait_hint is not None else self.retry.delay(attempt)
-            log.warning("%s: %s (attempt %d/%d), retrying in %.1fs",
-                        label, last_problem, attempt + 1, self.retry.max_attempts, delay)
+            log.warning(
+                "%s: %s (attempt %d/%d), retrying in %.1fs",
+                label,
+                last_problem,
+                attempt + 1,
+                self.retry.max_attempts,
+                delay,
+            )
             self._sleep(delay)
 
         if last_problem == "HTTP 429":

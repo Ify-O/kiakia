@@ -25,8 +25,9 @@ from kiakia.domain.errors import KiakiaError
 
 
 def _store(settings: Settings) -> PostgresStore:
-    return PostgresStore(connect(settings.db_host, settings.db_port, settings.db_user,
-                                 settings.db_password, settings.db_name))
+    return PostgresStore(
+        connect(settings.db_host, settings.db_port, settings.db_user, settings.db_password, settings.db_name)
+    )
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -35,8 +36,10 @@ def cmd_import(args: argparse.Namespace) -> None:
     source = TelegramSource(TelegramClient(settings.telegram_bot_token))
     use_case = ImportMessages(source=source, messages=store, cursors=store, runs=store)
     s = use_case.run(max_records=args.limit)
-    print(f"Imported from {source.name}: {s.seen} updates in {s.batches} batch(es) -> "
-          f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad.")
+    print(
+        f"Imported from {source.name}: {s.seen} updates in {s.batches} batch(es) -> "
+        f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad."
+    )
 
 
 def _ago(delta: timedelta) -> str:
@@ -61,8 +64,10 @@ def cmd_waiting(args: argparse.Namespace) -> None:
     for w in waiting:
         local = w.waiting_since.astimezone(settings.business_tz)  # stored in UTC, shown locally
         preview = (w.last_message_preview or "")[:50]
-        print(f"  ⏳ {w.contact_name[:24]:24}  {w.channel.value:9}  waiting {_ago(w.waited(now)):>12}"
-              f"  (since {local:%d %b %H:%M})  \"{preview}\"")
+        print(
+            f"  ⏳ {w.contact_name[:24]:24}  {w.channel.value:9}  waiting {_ago(w.waited(now)):>12}"
+            f'  (since {local:%d %b %H:%M})  "{preview}"'
+        )
 
 
 def cmd_stats(args: argparse.Namespace) -> None:
@@ -83,13 +88,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("stats", help="what's in the database").set_defaults(func=cmd_stats)
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     logging.getLogger("urllib3").setLevel(logging.WARNING)  # its debug logs would show URLs (token!)
     try:
         args.func(args)
     except (KiakiaError, ConfigError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)   # clear message, no stack trace, no secrets
+        print(f"Error: {exc}", file=sys.stderr)  # clear message, no stack trace, no secrets
         return 1
     return 0
 

@@ -1,4 +1,5 @@
 """Unit tests for the Telegram parser. Fake data only (tests/fixtures)."""
+
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,8 +19,9 @@ def result():
 
 
 def by_id(result, chat_id, message_id):
-    matches = [m for m in result.messages
-               if m.external_chat_id == chat_id and m.external_message_id == message_id]
+    matches = [
+        m for m in result.messages if m.external_chat_id == chat_id and m.external_message_id == message_id
+    ]
     return matches[-1]  # the edited version comes last
 
 
@@ -89,5 +91,6 @@ def test_empty_batch_has_no_cursor():
 
 def test_message_refuses_naive_datetime():
     with pytest.raises(ValueError):
-        Message(Channel.TELEGRAM, "1", "1", Direction.IN, MessageKind.TEXT,
-                datetime(2026, 1, 1), Sender("1", "x"))
+        Message(
+            Channel.TELEGRAM, "1", "1", Direction.IN, MessageKind.TEXT, datetime(2026, 1, 1), Sender("1", "x")
+        )

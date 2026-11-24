@@ -2,6 +2,7 @@
 
 No Telegram, no database: this is what decoupling buys us.
 """
+
 from datetime import UTC, datetime
 
 import pytest
@@ -12,8 +13,16 @@ from kiakia.domain.models import Channel, Direction, FetchResult, Message, Messa
 
 
 def message(i):
-    return Message(Channel.TELEGRAM, "1", str(i), Direction.IN, MessageKind.TEXT,
-                   datetime(2026, 1, 1, tzinfo=UTC), Sender("1", "Ada"), f"m{i}")
+    return Message(
+        Channel.TELEGRAM,
+        "1",
+        str(i),
+        Direction.IN,
+        MessageKind.TEXT,
+        datetime(2026, 1, 1, tzinfo=UTC),
+        Sender("1", "Ada"),
+        f"m{i}",
+    )
 
 
 class FakeSource:
@@ -60,14 +69,16 @@ def use_case(source, store):
 
 
 def test_imports_all_batches_and_moves_cursor():
-    source = FakeSource([
-        FetchResult(messages=[message(1), message(2)], next_cursor="3"),
-        FetchResult(messages=[message(3)], rejects=[Reject("bad", "x")], ignored=1, next_cursor="6"),
-    ])
+    source = FakeSource(
+        [
+            FetchResult(messages=[message(1), message(2)], next_cursor="3"),
+            FetchResult(messages=[message(3)], rejects=[Reject("bad", "x")], ignored=1, next_cursor="6"),
+        ]
+    )
     store = FakeStore()
     s = use_case(source, store).run()
     assert (s.saved, s.bad, s.ignored, s.seen, s.batches) == (3, 1, 1, 5, 2)
-    assert source.cursors_seen == [None, "3", "6"]     # continues where it stopped
+    assert source.cursors_seen == [None, "3", "6"]  # continues where it stopped
     assert store.cursor == "6"
     assert store.runs[0]["status"] == "succeeded"
 
@@ -77,7 +88,7 @@ def test_cursor_is_not_moved_when_saving_fails():
     store = FakeStore(fail_on_save=True)
     with pytest.raises(RuntimeError):
         use_case(source, store).run()
-    assert store.cursor is None                       # messages will be fetched again next time
+    assert store.cursor is None  # messages will be fetched again next time
     assert store.runs[0]["status"] == "failed"
 
 
@@ -85,6 +96,7 @@ def test_source_failure_is_logged_as_failed_run():
     class DownSource(FakeSource):
         def fetch(self, cursor, limit):
             raise SourceUnavailable("telegram getUpdates: timed out after 5 attempts")
+
     store = FakeStore()
     with pytest.raises(SourceUnavailable):
         use_case(DownSource([]), store).run()

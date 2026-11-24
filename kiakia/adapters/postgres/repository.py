@@ -20,8 +20,13 @@ from kiakia.domain.models import Channel, Direction, Message, WaitingCustomer
 def connect(host: str, port: int, user: str, password: str, dbname: str) -> psycopg.Connection:
     try:
         return psycopg.connect(
-            host=host, port=port, user=user, password=password, dbname=dbname,
-            connect_timeout=5, autocommit=True,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            dbname=dbname,
+            connect_timeout=5,
+            autocommit=True,
         )
     except psycopg.OperationalError as exc:
         # Keep the message short: it can contain host/port but never the password.
@@ -95,9 +100,7 @@ class PostgresStore:
                 (m.sender.username, m.channel.value, m.sender.external_id),
             )
             return contact_id
-        cur.execute(
-            "INSERT INTO contacts (display_name) VALUES (%s) RETURNING id", (m.sender.display_name,)
-        )
+        cur.execute("INSERT INTO contacts (display_name) VALUES (%s) RETURNING id", (m.sender.display_name,))
         new_id: int = _one(cur)[0]
         cur.execute(
             "INSERT INTO contact_identities (contact_id, channel, external_id, username) "
@@ -127,8 +130,17 @@ class PostgresStore:
                    kind = EXCLUDED.kind,
                    body = EXCLUDED.body,
                    media_ref = EXCLUDED.media_ref""",
-            (conversation_id, m.channel.value, m.external_chat_id, m.external_message_id,
-             m.direction.value, m.kind.value, m.body, m.media_ref, m.sent_at),
+            (
+                conversation_id,
+                m.channel.value,
+                m.external_chat_id,
+                m.external_message_id,
+                m.direction.value,
+                m.kind.value,
+                m.body,
+                m.media_ref,
+                m.sent_at,
+            ),
         )
 
     def _touch_conversation(self, cur: psycopg.Cursor, m: Message, conversation_id: int) -> None:
@@ -192,5 +204,9 @@ class PostgresStore:
             contacts, conversations, messages = _one(cur)
             cur.execute("SELECT kind, count(*) FROM messages GROUP BY kind ORDER BY 2 DESC")
             by_kind: dict[str, int] = dict(cur.fetchall())
-        return {"contacts": contacts, "conversations": conversations, "messages": messages,
-                "by_kind": by_kind}
+        return {
+            "contacts": contacts,
+            "conversations": conversations,
+            "messages": messages,
+            "by_kind": by_kind,
+        }

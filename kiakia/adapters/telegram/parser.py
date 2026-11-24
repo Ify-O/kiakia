@@ -77,7 +77,7 @@ def _kind_and_media(msg: dict[str, Any]) -> tuple[MessageKind, str | None]:
         media = msg.get(field)
         if not media:
             continue
-        if isinstance(media, list):        # photo = list of sizes; the last one is the largest
+        if isinstance(media, list):  # photo = list of sizes; the last one is the largest
             media = media[-1]
         file_id = _clean(media.get("file_id")) if isinstance(media, dict) else None
         return kind, file_id
@@ -88,20 +88,20 @@ def parse_update(update: dict[str, Any]) -> Message | None:
     """Return a Message, None if the update is deliberately ignored, or raise _Bad."""
     msg = next((update[k] for k in MESSAGE_KEYS if isinstance(update.get(k), dict)), None)
     if msg is None:
-        return None                         # not a message update (e.g. callback_query)
+        return None  # not a message update (e.g. callback_query)
 
     chat = _required(msg, "chat", "message")
     if not isinstance(chat, dict):
         raise _Bad("message.chat is not an object")
     if chat.get("type") != "private":
-        return None                         # groups/channels aren't customer chats
+        return None  # groups/channels aren't customer chats
 
     kind, media_ref = _kind_and_media(msg)
     return Message(
         channel=Channel.TELEGRAM,
         external_chat_id=str(_required(chat, "id", "chat")),
         external_message_id=str(_required(msg, "message_id", "message")),
-        direction=Direction.IN,             # getUpdates only delivers messages sent TO the bot
+        direction=Direction.IN,  # getUpdates only delivers messages sent TO the bot
         kind=kind,
         sent_at=_to_utc(_required(msg, "date", "message")),
         sender=_sender(msg.get("from"), chat),

@@ -1,4 +1,5 @@
 """Integration tests: PostgresStore against a real PostgreSQL (in Docker)."""
+
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -16,8 +17,9 @@ BAYO = Sender("9002", "Bayo", None)
 
 
 def msg(chat, mid, minutes, sender, body="hi", direction=Direction.IN, kind=MessageKind.TEXT):
-    return Message(Channel.TELEGRAM, chat, str(mid), direction, kind,
-                   T0 + timedelta(minutes=minutes), sender, body)
+    return Message(
+        Channel.TELEGRAM, chat, str(mid), direction, kind, T0 + timedelta(minutes=minutes), sender, body
+    )
 
 
 def count(conn, table):
@@ -30,7 +32,7 @@ def test_saving_twice_creates_no_duplicates(conn):
     store = PostgresStore(conn)
     batch = [msg("9001", 1, 0, ADA), msg("9001", 2, 1, ADA), msg("9002", 1, 2, BAYO)]
     store.save_messages(batch)
-    store.save_messages(batch)          # the same import again
+    store.save_messages(batch)  # the same import again
     assert count(conn, "messages") == 3
     assert count(conn, "contacts") == 2
     assert count(conn, "conversations") == 2
@@ -55,13 +57,16 @@ def test_times_are_stored_in_utc(conn):
 
 def test_waiting_customers_oldest_first_and_replied_chats_excluded(conn):
     store = PostgresStore(conn)
-    store.save_messages([
-        msg("9001", 1, 0, ADA, "first"), msg("9001", 2, 5, ADA, "second"),   # Ada: waiting since 0
-        msg("9002", 1, 2, BAYO, "price?"),                                   # Bayo: waiting since 2
-    ])
+    store.save_messages(
+        [
+            msg("9001", 1, 0, ADA, "first"),
+            msg("9001", 2, 5, ADA, "second"),  # Ada: waiting since 0
+            msg("9002", 1, 2, BAYO, "price?"),  # Bayo: waiting since 2
+        ]
+    )
     waiting = store.waiting_customers()
     assert [w.contact_name for w in waiting] == ["Ada Test", "Bayo"]
-    assert waiting[0].waiting_since == T0                 # since her FIRST unanswered message
+    assert waiting[0].waiting_since == T0  # since her FIRST unanswered message
     assert waiting[0].last_message_preview == "second"
 
     # The business replies to Bayo -> he is no longer waiting.
@@ -88,8 +93,10 @@ def test_import_run_log(conn):
     run_id = store.start_run("telegram")
     store.finish_run(run_id, status="succeeded", seen=8, saved=5, bad=1)
     with conn.cursor() as cur:
-        cur.execute("SELECT status, records_seen, records_saved, records_bad, finished_at IS NOT NULL "
-                    "FROM import_runs")
+        cur.execute(
+            "SELECT status, records_seen, records_saved, records_bad, finished_at IS NOT NULL "
+            "FROM import_runs"
+        )
         assert cur.fetchone() == ("succeeded", 8, 5, 1, True)
 
 
@@ -99,4 +106,4 @@ def test_failed_batch_saves_nothing(conn):
     bad = replace(msg("9001", 2, 1, ADA), external_message_id=None)  # violates NOT NULL in the DB
     with pytest.raises(psycopg.IntegrityError):
         store.save_messages([good, bad])
-    assert count(conn, "messages") == 0                   # all or nothing
+    assert count(conn, "messages") == 0  # all or nothing

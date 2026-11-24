@@ -22,15 +22,21 @@ log = logging.getLogger(__name__)
 @dataclass
 class ImportSummary:
     batches: int = 0
-    seen: int = 0       # updates received (messages + ignored + rejected)
+    seen: int = 0  # updates received (messages + ignored + rejected)
     saved: int = 0
     ignored: int = 0
     bad: int = 0
 
 
 class ImportMessages:
-    def __init__(self, source: MessageSource, messages: MessageRepository,
-                 cursors: CursorStore, runs: ImportRunLog, batch_size: int = 100):
+    def __init__(
+        self,
+        source: MessageSource,
+        messages: MessageRepository,
+        cursors: CursorStore,
+        runs: ImportRunLog,
+        batch_size: int = 100,
+    ):
         self.source = source
         self.messages = messages
         self.cursors = cursors
@@ -49,7 +55,7 @@ class ImportMessages:
                         break
                 cursor = self.cursors.get_cursor(self.source.name)
                 result = self.source.fetch(cursor, limit)
-                if result.next_cursor is None:      # nothing new
+                if result.next_cursor is None:  # nothing new
                     break
 
                 summary.batches += 1
@@ -62,9 +68,16 @@ class ImportMessages:
                 summary.saved += self.messages.save_messages(result.messages)  # 1. save
                 self.cursors.set_cursor(self.source.name, result.next_cursor)  # 2. then move on
         except Exception as exc:
-            self.runs.finish_run(run_id, status="failed", seen=summary.seen, saved=summary.saved,
-                                 bad=summary.bad, error=f"{type(exc).__name__}: {exc}"[:500])
+            self.runs.finish_run(
+                run_id,
+                status="failed",
+                seen=summary.seen,
+                saved=summary.saved,
+                bad=summary.bad,
+                error=f"{type(exc).__name__}: {exc}"[:500],
+            )
             raise
-        self.runs.finish_run(run_id, status="succeeded", seen=summary.seen,
-                             saved=summary.saved, bad=summary.bad)
+        self.runs.finish_run(
+            run_id, status="succeeded", seen=summary.seen, saved=summary.saved, bad=summary.bad
+        )
         return summary

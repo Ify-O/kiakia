@@ -19,8 +19,8 @@ class Channel(StrEnum):
 
 
 class Direction(StrEnum):
-    IN = "in"     # from the customer
-    OUT = "out"   # from the business
+    IN = "in"  # from the customer
+    OUT = "out"  # from the business
 
 
 class MessageKind(StrEnum):
@@ -37,6 +37,7 @@ class MessageKind(StrEnum):
 @dataclass(frozen=True)
 class Sender:
     """Who sent a message, as known on one channel."""
+
     external_id: str
     display_name: str
     username: str | None = None
@@ -49,9 +50,9 @@ class Message:
     external_message_id: str
     direction: Direction
     kind: MessageKind
-    sent_at: datetime            # must be timezone-aware (we store UTC)
+    sent_at: datetime  # must be timezone-aware (we store UTC)
     sender: Sender
-    body: str | None = None   # text or caption
+    body: str | None = None  # text or caption
     media_ref: str | None = None  # platform file id (e.g. a voice note to download later)
 
     def __post_init__(self) -> None:
@@ -63,22 +64,25 @@ class Message:
 @dataclass(frozen=True)
 class Reject:
     """A record we could not use, and why. Counted and logged, never fatal."""
+
     reason: str
-    ref: str | None = None    # e.g. the update id, to find it again
+    ref: str | None = None  # e.g. the update id, to find it again
 
 
 @dataclass
 class FetchResult:
     """What a MessageSource returns for one fetch."""
+
     messages: list[Message] = field(default_factory=list)
     rejects: list[Reject] = field(default_factory=list)
-    ignored: int = 0                   # valid updates we deliberately skip (e.g. group chats)
+    ignored: int = 0  # valid updates we deliberately skip (e.g. group chats)
     next_cursor: str | None = None  # where to continue next time; None = nothing new
 
 
 @dataclass(frozen=True)
 class WaitingCustomer:
     """A customer whose last message has no reply yet (problem #1)."""
+
     contact_name: str
     channel: Channel
     external_chat_id: str

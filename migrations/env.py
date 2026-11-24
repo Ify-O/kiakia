@@ -1,4 +1,5 @@
 """Alembic environment: connects to the database from our settings and runs migrations."""
+
 from alembic import context
 from sqlalchemy import create_engine
 

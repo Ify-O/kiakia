@@ -3,6 +3,7 @@
 Needs PostgreSQL running (docker compose up -d). If it isn't reachable,
 the integration tests are skipped instead of failing.
 """
+
 import os
 
 import psycopg
@@ -19,9 +20,15 @@ TEST_DB = "kiakia_test"
 def test_db_settings():
     settings = load_settings(require_telegram=False)
     try:
-        admin = psycopg.connect(host=settings.db_host, port=settings.db_port, user=settings.db_user,
-                                password=settings.db_password, dbname=settings.db_name,
-                                connect_timeout=3, autocommit=True)
+        admin = psycopg.connect(
+            host=settings.db_host,
+            port=settings.db_port,
+            user=settings.db_user,
+            password=settings.db_password,
+            dbname=settings.db_name,
+            connect_timeout=3,
+            autocommit=True,
+        )
     except psycopg.OperationalError:
         pytest.skip("PostgreSQL is not running (start it with: docker compose up -d)")
     with admin.cursor() as cur:
@@ -45,10 +52,18 @@ def test_db_settings():
 @pytest.fixture
 def conn(test_db_settings):
     s = test_db_settings
-    c = psycopg.connect(host=s.db_host, port=s.db_port, user=s.db_user,
-                        password=s.db_password, dbname=TEST_DB, autocommit=True)
+    c = psycopg.connect(
+        host=s.db_host,
+        port=s.db_port,
+        user=s.db_user,
+        password=s.db_password,
+        dbname=TEST_DB,
+        autocommit=True,
+    )
     with c.cursor() as cur:  # every test starts with empty tables
-        cur.execute("TRUNCATE messages, conversations, contact_identities, contacts, "
-                    "sync_cursors, import_runs RESTART IDENTITY CASCADE")
+        cur.execute(
+            "TRUNCATE messages, conversations, contact_identities, contacts, "
+            "sync_cursors, import_runs RESTART IDENTITY CASCADE"
+        )
     yield c
     c.close()
