@@ -2,7 +2,7 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-import psycopg2
+import psycopg
 import pytest
 
 from kiakia.adapters.postgres.repository import PostgresStore
@@ -97,6 +97,6 @@ def test_failed_batch_saves_nothing(conn):
     store = PostgresStore(conn)
     good = msg("9001", 1, 0, ADA)
     bad = replace(msg("9001", 2, 1, ADA), external_message_id=None)  # violates NOT NULL in the DB
-    with pytest.raises(psycopg2.IntegrityError):
+    with pytest.raises(psycopg.IntegrityError):
         store.save_messages([good, bad])
     assert count(conn, "messages") == 0                   # all or nothing

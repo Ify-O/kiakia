@@ -1,6 +1,6 @@
 """Kiakia's own error types.
 
-Adapters translate library errors (requests, psycopg2) into these, so inner
+Adapters translate library errors (requests, psycopg) into these, so inner
 layers never depend on those libraries (docs/ENGINEERING.md §4).
 """
 

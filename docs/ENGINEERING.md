@@ -108,7 +108,7 @@ docs/                PLAN.md lives at the root; design docs live here
 
 1. **Use our own exception types** (`domain/errors.py`): `SourceUnavailable`, `RateLimited`,
    `BadRecord`. Adapters translate library errors (e.g. `requests.Timeout`) into these, so
-   the inner layers never depend on `requests` or `psycopg2`.
+   the inner layers never depend on `requests` or `psycopg`.
 2. **Bad record → skip, log and count. Never crash the run.** The parser returns good
    records plus a list of rejects with reasons. `import_runs` stores the counts.
 3. **Transient error → retry** (timeouts, connection errors, HTTP 429, 5xx).

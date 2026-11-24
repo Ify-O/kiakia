@@ -27,7 +27,7 @@ class Settings:
     @property
     def database_url(self) -> str:
         """SQLAlchemy-style URL, used by Alembic for migrations."""
-        return (f"postgresql+psycopg2://{self.db_user}:{self.db_password}"
+        return (f"postgresql+psycopg://{self.db_user}:{self.db_password}"
                 f"@{self.db_host}:{self.db_port}/{self.db_name}")
 
     def __repr__(self) -> str:  # never print secrets by accident
