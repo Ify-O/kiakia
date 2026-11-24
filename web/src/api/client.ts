@@ -20,6 +20,10 @@ export type Message = S["Message"];
 export type FeedItem = S["FeedItem"];
 export type InboxStats = S["InboxStats"];
 export type Problem = S["Problem"];
+export type ConsentStatus = S["ConsentStatus"];
+export type Customer = S["Customer"];
+export type CustomerDetail = S["CustomerDetail"];
+export type ConsentRecord = S["ConsentRecord"];
 
 /** An error response from the API, in RFC 9457 Problem Details form (docs/adr/0002). */
 export class ApiProblem extends Error {
