@@ -5,7 +5,6 @@ openapi.yaml:
     # The API only runs locally for now (course rule: no deployment). Replace when we deploy.
     - '#/servers/0/url'
   operation-4xx-response:
-    # These two endpoints take no input at all, so no client error is possible.
-    # A made-up 4xx would make the contract lie. Server-side failures are documented (503/500).
-    - '#/paths/~1v1~1stats/get/responses'
+    # /health takes no input at all, so no client error is possible.
+    # A made-up 4xx would make the contract lie. Server-side failures are documented (503).
     - '#/paths/~1health/get/responses'

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Kiakia API
-  version: 1.0.0
+  version: 1.1.0
   summary: Every customer, answered fast.
   description: |
     The contract for Kiakia, a single inbox for small businesses that sell through chat.
@@ -53,11 +53,19 @@ paths:
       parameters:
         - name: status
           in: query
-          description: "`waiting` = the customer's last message has no reply yet. `answered` = the business replied last."
+          description: "`waiting` = the customer has messages with no reply yet. `answered` = the business replied last. `resolved` = marked done (see docs/adr/0006)."
           schema:
             type: string
-            enum: [all, waiting, answered]
+            enum: [all, waiting, answered, resolved]
             default: all
+        - name: category
+          in: query
+          description: Only conversations with this category; `none` = not categorised yet.
+          schema:
+            type: string
+            enum: [enquiry, order, complaint, other, none]
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
         - name: channel
           in: query
           description: Only conversations on this channel.
@@ -112,6 +120,41 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    patch:
+      operationId: updateConversation
+      tags: [Conversations]
+      summary: Resolve, reopen or categorise a conversation
+      description: |
+        Set `resolved` and/or `category` (at least one). Values are *set*, not toggled, so repeating
+        the same request gives the same result (naturally idempotent; no Idempotency-Key needed).
+        A resolved conversation leaves the waiting list until the customer writes again (docs/adr/0006).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationUpdate"
+            example:
+              resolved: true
+              category: order
+      responses:
+        "200":
+          description: The updated conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "500":
@@ -209,12 +252,52 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/messages:
+    get:
+      operationId: listAllMessages
+      tags: [Messages]
+      summary: List messages across all conversations
+      description: Newest first, with the customer each message belongs to. For the "messages by platform" view.
+      parameters:
+        - name: channel
+          in: query
+          description: Only messages on this channel.
+          schema:
+            $ref: "#/components/schemas/Channel"
+        - name: direction
+          in: query
+          description: "`in` = from customers, `out` = our replies."
+          schema:
+            $ref: "#/components/schemas/Direction"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: One page of messages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/stats:
     get:
       operationId: getStats
       tags: [Stats]
       summary: Dashboard numbers
-      description: Totals and the current waiting situation, for the dashboard.
+      description: |
+        Counts for a period (`from`/`to`; default: all time) plus the situation **right now**
+        (`waiting`, `oldestWaitingSince`). Definitions are in docs/adr/0006.
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
       responses:
         "200":
           description: Current numbers.
@@ -222,6 +305,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InboxStats"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "500":
@@ -254,6 +339,20 @@ components:
         type: integer
         format: int64
         minimum: 1
+    From:
+      name: from
+      in: query
+      description: Only include items at or after this time (RFC 3339, e.g. 2026-11-24T00:00:00Z). Must be before `to`.
+      schema:
+        type: string
+        format: date-time
+    To:
+      name: to
+      in: query
+      description: Only include items before this time (exclusive).
+      schema:
+        type: string
+        format: date-time
     Limit:
       name: limit
       in: query
@@ -289,8 +388,15 @@ components:
 
     ConversationStatus:
       type: string
-      description: "`waiting` = the customer's last message has no reply yet."
-      enum: [waiting, answered]
+      description: |
+        `waiting` = the customer has messages with no reply yet. `answered` = the business replied last.
+        `resolved` = someone marked it done; a new customer message makes it `waiting` again.
+      enum: [waiting, answered, resolved]
+
+    Category:
+      type: string
+      description: What the conversation is about. Set by staff; a light label, not a CRM (docs/adr/0006).
+      enum: [enquiry, order, complaint, other]
 
     Contact:
       type: object
@@ -322,6 +428,8 @@ components:
         - lastReplyAt
         - lastMessagePreview
         - unansweredCount
+        - category
+        - resolvedAt
       properties:
         id:
           type: integer
@@ -353,7 +461,16 @@ components:
         unansweredCount:
           type: integer
           minimum: 0
-          description: Customer messages since the last reply.
+          description: Customer messages since the last reply (or since it was resolved).
+        category:
+          oneOf:
+            - $ref: "#/components/schemas/Category"
+            - type: "null"
+          description: The label staff gave this conversation, or `null`.
+        resolvedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When it was marked resolved, or `null`. Stays set if the customer writes again (then `status` is `waiting`).
 
     ConversationSummary:
       description: A conversation as shown in lists.
@@ -379,7 +496,7 @@ components:
     Message:
       type: object
       additionalProperties: false
-      required: [id, conversationId, direction, kind, body, hasMedia, sentAt]
+      required: [id, conversationId, channel, direction, kind, body, hasMedia, sentAt]
       properties:
         id:
           type: integer
@@ -387,6 +504,8 @@ components:
         conversationId:
           type: integer
           format: int64
+        channel:
+          $ref: "#/components/schemas/Channel"
         direction:
           $ref: "#/components/schemas/Direction"
         kind:
@@ -400,6 +519,67 @@ components:
         sentAt:
           type: string
           format: date-time
+
+    FeedItem:
+      type: object
+      additionalProperties: false
+      required: [message, contact]
+      properties:
+        message:
+          $ref: "#/components/schemas/Message"
+        contact:
+          $ref: "#/components/schemas/Contact"
+
+    FeedPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedItem"
+        page:
+          $ref: "#/components/schemas/PageInfo"
+
+    ConversationUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: At least one of the fields. Omitted fields are left unchanged.
+      properties:
+        resolved:
+          type: boolean
+          description: "`true` marks it resolved (it leaves the waiting list); `false` reopens it."
+        category:
+          oneOf:
+            - $ref: "#/components/schemas/Category"
+            - type: "null"
+          description: Set a label, or `null` to remove it.
+
+    ChannelStats:
+      type: object
+      additionalProperties: false
+      required: [channel, conversations, messages, messagesReceived, waiting, responseRate]
+      properties:
+        channel:
+          $ref: "#/components/schemas/Channel"
+        conversations:
+          type: integer
+          minimum: 0
+        messages:
+          type: integer
+          minimum: 0
+        messagesReceived:
+          type: integer
+          minimum: 0
+        waiting:
+          type: integer
+          minimum: 0
+        responseRate:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
 
     ReplyCreate:
       type: object
@@ -453,25 +633,65 @@ components:
     InboxStats:
       type: object
       additionalProperties: false
-      required: [contacts, conversations, messages, waiting, oldestWaitingSince, messagesByKind]
+      required:
+        - contacts
+        - conversations
+        - messages
+        - messagesReceived
+        - waiting
+        - oldestWaitingSince
+        - responseRate
+        - medianFirstResponseSeconds
+        - messagesByKind
+        - byChannel
+        - byCategory
       properties:
         contacts:
           type: integer
           minimum: 0
+          description: All customers (not limited to the period).
         conversations:
           type: integer
           minimum: 0
+          description: Conversations with at least one customer message in the period.
         messages:
           type: integer
           minimum: 0
+          description: Messages (both directions) sent in the period.
+        messagesReceived:
+          type: integer
+          minimum: 0
+          description: Customer messages received in the period.
         waiting:
           type: integer
           minimum: 0
-          description: Conversations whose customer is waiting for a reply.
+          description: Customers waiting for a reply **right now** (not limited to the period).
+        responseRate:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: Share of the period's conversations whose latest customer message is answered or resolved. `null` if there are none.
+        medianFirstResponseSeconds:
+          type: [integer, "null"]
+          minimum: 0
+          description: Median time from a customer's first unanswered message to our next reply, for replies sent in the period. `null` if none.
+        byChannel:
+          type: array
+          description: The same numbers per channel (channels with no activity are left out).
+          items:
+            $ref: "#/components/schemas/ChannelStats"
+        byCategory:
+          type: object
+          description: Conversations in the period per category; `none` = not categorised.
+          propertyNames:
+            enum: [enquiry, order, complaint, other, none]
+          additionalProperties:
+            type: integer
+            minimum: 0
         oldestWaitingSince:
           type: [string, "null"]
           format: date-time
-          description: When the longest-waiting customer started waiting. `null` if nobody is waiting.
+          description: When the longest-waiting customer started waiting (right now). `null` if nobody is waiting.
         messagesByKind:
           type: object
           description: Message count per kind; kinds with no messages are left out.

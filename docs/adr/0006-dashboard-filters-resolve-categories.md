@@ -1,6 +1,6 @@
 # ADR 0006: Dashboard insights, date filters, and marking conversations resolved / by category
 
-- **Status:** Proposed, 2026-11-25 (becomes *Accepted* when `openapi.yaml` is updated, before any UI code uses it)
+- **Status:** Accepted, 2026-11-25 (`openapi.yaml` v1.1.0 implements it)
 - **Requested by:** Ify-O (product owner), after reviewing the first UI mockup
 
 ## Context
