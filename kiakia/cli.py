@@ -1,8 +1,7 @@
-"""Kiakia command line, and the COMPOSITION ROOT.
+"""Kiakia command line: parses commands and prints results. Nothing else.
 
-This is the only module that knows the concrete classes (TelegramSource,
-PostgresStore). It builds them and hands them to the use cases, which only
-know the ports. Swapping Telegram for Meta later means changing wiring here.
+It never builds adapters itself: it asks kiakia.bootstrap (the composition root)
+for ready-made use cases, so the future web API can reuse the same wiring.
 
     python -m kiakia.cli import --limit 10   # start small
     python -m kiakia.cli import              # everything pending
@@ -15,36 +14,17 @@ import logging
 import sys
 from datetime import UTC, datetime, timedelta
 
-from kiakia.adapters.postgres.repository import PostgresStore, connect
-from kiakia.adapters.telegram.client import TelegramClient
-from kiakia.adapters.telegram.source import TelegramSource
-from kiakia.application.import_messages import ImportMessages
-from kiakia.application.waiting import ListWaitingCustomers
-from kiakia.config import ConfigError, Settings, load_settings
+from kiakia.bootstrap import app
+from kiakia.config import ConfigError, load_settings
 from kiakia.domain.errors import KiakiaError
 
 
-def _store(settings: Settings) -> PostgresStore:
-    return PostgresStore(
-        connect(
-            settings.db_host,
-            settings.db_port,
-            settings.db_user,
-            settings.db_password.get_secret_value(),
-            settings.db_name,
-        )
-    )
-
-
 def cmd_import(args: argparse.Namespace) -> None:
-    settings = load_settings()
-    store = _store(settings)
-    source = TelegramSource(TelegramClient(settings.telegram_bot_token.get_secret_value()))
-    use_case = ImportMessages(source=source, messages=store, cursors=store, runs=store)
-    s = use_case.run(max_records=args.limit)
+    with app(load_settings()) as services:
+        s = services.import_messages().run(max_records=args.limit)
     print(
-        f"Imported from {source.name}: {s.seen} updates in {s.batches} batch(es) -> "
-        f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad."
+        f"Imported from {s.source}: {s.seen} updates in {s.batches} batch(es) -> "
+        f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad (kept in rejected_updates)."
     )
 
 
@@ -60,8 +40,8 @@ def _ago(delta: timedelta) -> str:
 
 def cmd_waiting(args: argparse.Namespace) -> None:
     settings = load_settings(require_telegram=False)
-    store = _store(settings)
-    waiting = ListWaitingCustomers(store).run()
+    with app(settings) as services:
+        waiting = services.list_waiting_customers().run()
     now = datetime.now(UTC)
     if not waiting:
         print("Nobody is waiting. Every customer has a reply. 🎉")
@@ -77,10 +57,11 @@ def cmd_waiting(args: argparse.Namespace) -> None:
 
 
 def cmd_stats(args: argparse.Namespace) -> None:
-    c = _store(load_settings(require_telegram=False)).counts()
-    print(f"Contacts: {c['contacts']}   Conversations: {c['conversations']}   Messages: {c['messages']}")
-    for kind, n in c["by_kind"].items():
-        print(f"  {kind:9} {n}")
+    with app(load_settings(require_telegram=False)) as services:
+        st = services.get_inbox_stats().run()
+    print(f"Contacts: {st.contacts}   Conversations: {st.conversations}   Messages: {st.messages}")
+    for kind, n in st.by_kind.items():
+        print(f"  {kind.value:9} {n}")
 
 
 def main(argv: list[str] | None = None) -> int:

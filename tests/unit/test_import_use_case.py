@@ -9,7 +9,16 @@ import pytest
 
 from kiakia.application.import_messages import ImportMessages
 from kiakia.domain.errors import SourceUnavailable
-from kiakia.domain.models import Channel, Direction, FetchResult, Message, MessageKind, Reject, Sender
+from kiakia.domain.models import (
+    Channel,
+    Direction,
+    FetchResult,
+    Message,
+    MessageKind,
+    Reject,
+    RunStatus,
+    Sender,
+)
 
 
 def message(i):
@@ -40,10 +49,13 @@ class FakeSource:
 class FakeStore:
     def __init__(self, fail_on_save=False):
         self.saved, self.cursor, self.runs, self.fail_on_save = [], None, [], fail_on_save
+        self.rejected = []
+        self.log = []  # order of calls, to prove 'save first, move cursor last'
 
     def save_messages(self, messages):
         if self.fail_on_save:
             raise RuntimeError("database down")
+        self.log.append("save_messages")
         self.saved.extend(messages)
         return len(messages)
 
@@ -53,7 +65,13 @@ class FakeStore:
     def get_cursor(self, source):
         return self.cursor
 
+    def save_rejects(self, source, rejects):
+        self.log.append("save_rejects")
+        self.rejected.extend(rejects)
+        return len(rejects)
+
     def set_cursor(self, source, cursor):
+        self.log.append("set_cursor")
         self.cursor = cursor
 
     def start_run(self, source):
@@ -65,7 +83,7 @@ class FakeStore:
 
 
 def use_case(source, store):
-    return ImportMessages(source, messages=store, cursors=store, runs=store)
+    return ImportMessages(source, messages=store, rejects=store, cursors=store, runs=store)
 
 
 def test_imports_all_batches_and_moves_cursor():
@@ -80,7 +98,7 @@ def test_imports_all_batches_and_moves_cursor():
     assert (s.saved, s.bad, s.ignored, s.seen, s.batches) == (3, 1, 1, 5, 2)
     assert source.cursors_seen == [None, "3", "6"]  # continues where it stopped
     assert store.cursor == "6"
-    assert store.runs[0]["status"] == "succeeded"
+    assert store.runs[0]["status"] is RunStatus.SUCCEEDED
 
 
 def test_cursor_is_not_moved_when_saving_fails():
@@ -89,7 +107,7 @@ def test_cursor_is_not_moved_when_saving_fails():
     with pytest.raises(RuntimeError):
         use_case(source, store).run()
     assert store.cursor is None  # messages will be fetched again next time
-    assert store.runs[0]["status"] == "failed"
+    assert store.runs[0]["status"] is RunStatus.FAILED
 
 
 def test_source_failure_is_logged_as_failed_run():
@@ -100,7 +118,7 @@ def test_source_failure_is_logged_as_failed_run():
     store = FakeStore()
     with pytest.raises(SourceUnavailable):
         use_case(DownSource([]), store).run()
-    assert store.runs[0]["status"] == "failed"
+    assert store.runs[0]["status"] is RunStatus.FAILED
     assert "timed out" in store.runs[0]["error"]
 
 
@@ -124,3 +142,13 @@ def test_limit_stops_after_n_records():
     source = FakeSource([FetchResult(messages=[message(i)], next_cursor=str(i + 1)) for i in range(10)])
     s = use_case(source, FakeStore()).run(max_records=3)
     assert s.saved == 3
+
+
+def test_rejects_are_kept_before_the_cursor_moves():
+    # W5: bad records go to the dead-letter store, and the cursor moves only after that.
+    bad = Reject("missing message.date", "7", raw={"update_id": 7})
+    source = FakeSource([FetchResult(messages=[message(1)], rejects=[bad], next_cursor="8")])
+    store = FakeStore()
+    use_case(source, store).run()
+    assert store.rejected == [bad]
+    assert store.log == ["save_messages", "save_rejects", "set_cursor"]

@@ -32,6 +32,7 @@ def test_counts(result):
     assert len(result.rejects) == 1
     assert result.rejects[0].ref == "500007"
     assert "date" in result.rejects[0].reason
+    assert result.rejects[0].raw["update_id"] == 500007  # original kept for the dead-letter table
 
 
 def test_cursor_moves_past_everything_seen(result):

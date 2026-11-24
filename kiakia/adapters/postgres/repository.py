@@ -1,6 +1,6 @@
 """PostgreSQL adapter: the ONLY place in Kiakia that reads or writes the database.
 
-Implements the MessageRepository, CursorStore and ImportRunLog ports.
+Implements the MessageRepository, RejectStore, CursorStore, ImportRunLog and StatsQuery ports.
 Uses psycopg 3, the current PostgreSQL driver for Python.
 
 - All SQL is parameterised (%s placeholders), never built from strings.
@@ -9,12 +9,23 @@ Uses psycopg 3, the current PostgreSQL driver for Python.
   is wrapped in an explicit `with conn.transaction():` block.
 """
 
+import json
 from typing import Any
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from kiakia.domain.errors import StorageUnavailable
-from kiakia.domain.models import Channel, Direction, Message, WaitingCustomer
+from kiakia.domain.models import (
+    Channel,
+    Direction,
+    InboxStats,
+    Message,
+    MessageKind,
+    Reject,
+    RunStatus,
+    WaitingCustomer,
+)
 
 
 def connect(host: str, port: int, user: str, password: str, dbname: str) -> psycopg.Connection:
@@ -32,6 +43,11 @@ def connect(host: str, port: int, user: str, password: str, dbname: str) -> psyc
         # Keep the message short: it can contain host/port but never the password.
         first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise StorageUnavailable(f"cannot connect to PostgreSQL at {host}:{port}: {first_line}") from exc
+
+
+def _json_dumps(obj: Any) -> str:
+    """JSON for the dead-letter table; anything exotic is stored as text rather than lost."""
+    return json.dumps(obj, default=str)
 
 
 def _one(cur: psycopg.Cursor) -> tuple[Any, ...]:
@@ -158,6 +174,27 @@ class PostgresStore:
             for name, channel, chat_id, since, preview in rows
         ]
 
+    # ---------- RejectStore (dead letter) ----------
+
+    def save_rejects(self, source: str, rejects: list[Reject]) -> int:
+        """Keep bad records with their original JSON. Same (source, ref) is stored once."""
+        if not rejects:
+            return 0
+        new = 0
+        try:
+            with self._conn.transaction(), self._conn.cursor() as cur:
+                for r in rejects:
+                    cur.execute(
+                        """INSERT INTO rejected_updates (source, ref, reason, raw)
+                           VALUES (%s, %s, %s, %s)
+                           ON CONFLICT (source, ref) DO NOTHING""",
+                        (source, r.ref, r.reason, Jsonb(r.raw, dumps=_json_dumps)),
+                    )
+                    new += cur.rowcount
+        except psycopg.OperationalError as exc:
+            raise StorageUnavailable(f"saving rejected records failed: {exc}") from exc
+        return new
+
     # ---------- CursorStore ----------
 
     def get_cursor(self, source: str) -> str | None:
@@ -183,19 +220,19 @@ class PostgresStore:
             return run_id
 
     def finish_run(
-        self, run_id: int, *, status: str, seen: int, saved: int, bad: int, error: str | None = None
+        self, run_id: int, *, status: RunStatus, seen: int, saved: int, bad: int, error: str | None = None
     ) -> None:
         with self._conn.cursor() as cur:
             cur.execute(
                 """UPDATE import_runs SET finished_at = now(), status = %s, records_seen = %s,
                           records_saved = %s, records_bad = %s, error = %s
                    WHERE id = %s""",
-                (status, seen, saved, bad, error, run_id),
+                (status.value, seen, saved, bad, error, run_id),
             )
 
-    # ---------- small read helpers for the CLI ----------
+    # ---------- StatsQuery ----------
 
-    def counts(self) -> dict[str, Any]:
+    def inbox_stats(self) -> InboxStats:
         with self._conn.cursor() as cur:
             cur.execute(
                 """SELECT (SELECT count(*) FROM contacts), (SELECT count(*) FROM conversations),
@@ -203,10 +240,5 @@ class PostgresStore:
             )
             contacts, conversations, messages = _one(cur)
             cur.execute("SELECT kind, count(*) FROM messages GROUP BY kind ORDER BY 2 DESC")
-            by_kind: dict[str, int] = dict(cur.fetchall())
-        return {
-            "contacts": contacts,
-            "conversations": conversations,
-            "messages": messages,
-            "by_kind": by_kind,
-        }
+            by_kind = {MessageKind(kind): count for kind, count in cur.fetchall()}
+        return InboxStats(contacts=contacts, conversations=conversations, messages=messages, by_kind=by_kind)

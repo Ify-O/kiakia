@@ -1,6 +1,6 @@
 # Kiakia: Architecture Review
 
-> A review of the code as it is on `main` (Week 1 + Python 3.12 modernisation).
+> A review of the code as it is on `main` (Week 1 + Python 3.12 modernisation, updated after Sprints 1 and 2).
 > Part A explains how it works, in diagrams. Part B judges it against best practice
 > and lists the weak parts, with evidence and fixes.
 > GitHub draws the diagrams automatically.
@@ -31,7 +31,7 @@ flowchart LR
   depends on nothing.
 - The **use cases** (import messages, list waiting customers) only talk to **ports**, which are interfaces.
 - **Adapters** plug the real world in: Telegram on one side, PostgreSQL on the other.
-- One place, `cli.py`, wires everything together: the **composition root**.
+- One place, `bootstrap.py`, builds and wires everything: the **composition root**. The CLI only parses commands and prints.
 
 Patterns used: Repository, Adapter, Dependency Injection (constructor injection), Composition Root,
 Use Case / Interactor, Anti-Corruption Layer (the parser), Strategy (the pluggable "retry-after" reader),
@@ -45,18 +45,20 @@ Clean Architecture.
 ```mermaid
 flowchart TB
     subgraph ENTRY["🚪 Entry point"]
-        CLI["cli.py<br/>commands + wiring<br/>(composition root)"]
-        CFG["config.py<br/>settings from .env"]
+        CLI["cli.py<br/>commands + printing only"]
+        BOOT["bootstrap.py<br/>wiring + connection lifecycle<br/>(composition root)"]
+        CFG["config.py<br/>validated settings (pydantic)"]
     end
 
     subgraph APP["🧠 Application: use cases"]
         IMP["ImportMessages"]
         WAIT["ListWaitingCustomers"]
+        STATS["GetInboxStats"]
     end
 
     subgraph DOMAIN["❤️ Domain: depends on nothing"]
         MODELS["models.py<br/>Message, Sender, WaitingCustomer…"]
-        PORTS["ports.py<br/>MessageSource, MessageRepository,<br/>CursorStore, ImportRunLog"]
+        PORTS["ports.py<br/>MessageSource, MessageRepository, RejectStore,<br/>CursorStore, ImportRunLog, StatsQuery"]
         ERR["errors.py<br/>KiakiaError family"]
     end
 
@@ -69,13 +71,14 @@ flowchart TB
         HTTP["http.py<br/>timeouts, retries, rate limit"]
     end
 
-    CLI --> IMP & WAIT
-    CLI -.->|builds| TG & PG
+    CLI --> BOOT
     CLI --> CFG
-    IMP & WAIT --> PORTS
+    BOOT --> IMP & WAIT & STATS
+    BOOT -.->|builds| TG & PG
+    IMP & WAIT & STATS --> PORTS
     PORTS --> MODELS
     TG -->|"implements MessageSource"| PORTS
-    PG -->|"implements 3 ports"| PORTS
+    PG -->|"implements 5 ports"| PORTS
     TG --> HTTP
     TG & PG & HTTP --> ERR
 
@@ -83,7 +86,7 @@ flowchart TB
     classDef app fill:#fff4d6,stroke:#d4a017;
     classDef adapter fill:#e6f2ff,stroke:#2e86de;
     class MODELS,PORTS,ERR core;
-    class IMP,WAIT app;
+    class IMP,WAIT,STATS app;
     class TG,PG,HTTP adapter;
 ```
 
@@ -109,6 +112,14 @@ classDiagram
         <<port>>
         get_cursor(source)
         set_cursor(source, cursor)
+    }
+    class RejectStore {
+        <<port>>
+        save_rejects(source, rejects) int
+    }
+    class StatsQuery {
+        <<port>>
+        inbox_stats() InboxStats
     }
     class ImportRunLog {
         <<port>>
@@ -137,6 +148,9 @@ classDiagram
     PostgresStore ..|> MessageRepository
     PostgresStore ..|> CursorStore
     PostgresStore ..|> ImportRunLog
+    PostgresStore ..|> RejectStore
+    PostgresStore ..|> StatsQuery
+    ImportMessages --> RejectStore
     FakeStore ..|> MessageRepository
     ImportMessages --> MessageSource
     ImportMessages --> MessageRepository
@@ -153,7 +167,7 @@ messages once we ask for a later cursor, so this order means a crash can never l
 sequenceDiagram
     autonumber
     actor Owner
-    participant CLI as cli.py
+    participant CLI as cli.py + bootstrap
     participant UC as ImportMessages
     participant DB as PostgresStore
     participant SRC as TelegramSource
@@ -173,6 +187,7 @@ sequenceDiagram
         SRC->>SRC: parser: JSON → Message (bad → Reject)
         SRC-->>UC: FetchResult(messages, rejects, next_cursor)
         UC->>DB: save_messages() [ONE transaction, upsert]
+        UC->>DB: save_rejects() [dead letter: keep bad records]
         UC->>DB: set_cursor(next_cursor)
     end
     UC->>DB: finish_run(succeeded, counts)
@@ -208,7 +223,7 @@ flowchart TD
 
 ## A7. Database schema
 
-Managed by **Alembic migration `0001`**. Unique keys (🔑) are what make imports idempotent.
+Managed by **Alembic migrations `0001` → `0002` → `0003`**. Unique keys (🔑) are what make imports idempotent.
 
 ```mermaid
 erDiagram
@@ -248,6 +263,14 @@ erDiagram
         text media_ref "file id for voice notes"
         timestamptz sent_at "always UTC"
     }
+    rejected_updates {
+        bigint id PK
+        text source "UNIQUE with ref"
+        text ref "e.g. update_id"
+        text reason
+        jsonb raw "original payload"
+        timestamptz received_at
+    }
     sync_cursors {
         text source PK
         text cursor
@@ -264,7 +287,9 @@ erDiagram
     }
 ```
 
-`sync_cursors` and `import_runs` are bookkeeping tables, not linked to the others.
+`sync_cursors`, `import_runs` and `rejected_updates` (dead letter, migration `0003`) are bookkeeping
+tables, not linked to the others. Migration `0002` added CHECK constraints on `channel` and indexes on
+the foreign keys.
 
 ## A8. API design
 
@@ -283,12 +308,13 @@ flowchart LR
     subgraph INTERNAL["Internal API = the ports"]
         P1["MessageSource.fetch"]
         P2["MessageRepository.save_messages / waiting_customers"]
-        P3["CursorStore / ImportRunLog"]
+        P3["CursorStore / ImportRunLog / RejectStore"]
+        P4["StatsQuery.inbox_stats"]
     end
     TGAPI --> P1
     C1 --> P1 & P2 & P3
     C2 --> P2
-    C3 -.->|"⚠️ bypasses ports, see W9"| DBX[("PostgresStore.counts")]
+    C3 --> P4
 ```
 
 **Planned next (weeks 3–4):** a REST API (FastAPI) that reuses the **same use cases**, so nothing
@@ -304,7 +330,7 @@ flowchart LR
         E3["POST /conversations/{id}/replies"]
         E4["POST /webhooks/telegram"]
     end
-    API --> UC["Same use cases<br/>ImportMessages, ListWaitingCustomers,<br/>+ SendReply (new)"]
+    API --> BOOT["Same bootstrap.py wiring"] --> UC["Same use cases<br/>ImportMessages, ListWaitingCustomers,<br/>GetInboxStats + SendReply (new)"]
     UC --> PORTS["Same ports"] --> ADP["Same adapters"]
 ```
 
@@ -317,8 +343,8 @@ flowchart LR
 | Parser → Telegram JSON | **Format coupling**, but *contained* in one file (anti-corruption layer) | ✅ Correct place for it |
 | TelegramClient → ResilientHttpClient | **Concrete coupling** (a class, not an interface) | 🟡 Acceptable; could be a port later |
 | Adapters → domain errors | **Inward dependency** | ✅ Correct direction |
-| `cli.py` → everything | **Concrete coupling**, on purpose (composition root) | ✅ But it does two jobs (W8) |
-| `cli stats` → `PostgresStore.counts()` | **Concrete coupling that bypasses ports** | 🔴 Leak (W9) |
+| `bootstrap.py` → everything | **Concrete coupling**, on purpose (composition root) | ✅ Fixed W8: the CLI no longer imports adapters |
+| `cli stats` → `GetInboxStats` → `StatsQuery` | Interface coupling | ✅ Fixed W9 (was a leak) |
 | Alembic `env.py` → `kiakia.config` | Config coupling | ✅ Fine |
 | Integration tests → migrations | Tests build the DB through Alembic | ✅ Excellent: tests prove migrations work |
 
@@ -337,7 +363,7 @@ flowchart LR
 | **Error translation** | `requests`/`psycopg` errors become Kiakia errors at the edge; the CLI shows clean messages |
 | **Bad data** | The parser never crashes on one bad record; rejects are counted per run |
 | **Schema versioning** | Alembic migrations; CI runs them up → down → up |
-| **Testing** | 45 tests: unit (no network/DB, using fakes) + integration (real Postgres built by migrations) |
+| **Testing** | 54 tests: unit (no network/DB, using fakes) + integration (real Postgres built by migrations) |
 | **Tooling** | uv lockfile, ruff (incl. security rules), strict mypy, CI on every PR |
 | **Secrets** | `.env` git-ignored; token never in logs or errors; `Settings.__repr__` hides it |
 | **Time** | Aware datetimes enforced by the domain; stored in UTC, shown in Africa/Lagos time |
@@ -379,6 +405,7 @@ This is how Telegram's `getUpdates` works, not a bug, but today nothing runs the
 needed for the real-time "customer waiting" alerts.
 
 **W5. Rejected records are gone for good.**
+> ✅ **Fixed in Sprint 2:** each `Reject` carries its original JSON and is stored in `rejected_updates` (migration `0003`) before the cursor moves. New `RejectStore` port. Tests prove call order and idempotency.
 [kiakia/application/import_messages.py:65-66](../kiakia/application/import_messages.py)
 A bad update is only *logged*, then the cursor moves past it and Telegram deletes it, so it can never be
 inspected or replayed.
@@ -403,6 +430,7 @@ The DB URL is built by gluing strings together, so `@` or `/` in the password co
 reports every bad setting at once with a clear message.
 
 **W8. `cli.py` does two jobs.**
+> ✅ **Fixed in Sprint 2:** `kiakia/bootstrap.py` is the composition root; the CLI only parses and prints, and imports no adapters.
 [kiakia/cli.py](../kiakia/cli.py)
 It's both the **user interface** (printing) and the **composition root** (building objects). When the
 FastAPI entry point arrives, the wiring would get copied, which is duplication.
@@ -410,12 +438,14 @@ FastAPI entry point arrives, the wiring would get copied, which is duplication.
 the CLI and the future API.
 
 **W9. `stats` bypasses the ports.**
+> ✅ **Fixed in Sprint 2:** `GetInboxStats` use case + `StatsQuery` port, returning a typed `InboxStats`.
 [kiakia/cli.py:73-77](../kiakia/cli.py), [kiakia/adapters/postgres/repository.py:198](../kiakia/adapters/postgres/repository.py)
 `counts()` isn't on any port, so the CLI depends directly on `PostgresStore`, a small crack in the
 architecture.
 *Fix:* add a `GetStats` use case and a small `StatsQuery` port.
 
 **W10. Database connections are never closed.**
+> ✅ **Fixed in Sprint 2:** `with app(settings) as services:` always closes the connection, even after an error (integration-tested).
 [kiakia/cli.py:27-30](../kiakia/cli.py)
 Fine for a short command, but a long-running web API would leak connections.
 *Fix:* use `with connect(...) as conn:` in the composition root now, and a **connection pool**
@@ -440,10 +470,10 @@ together". That gives exactly-once delivery inside the DB.
 
 | # | Weakness | Where | Fix |
 |---|---|---|---|
-| W13 | Run status is a free string (`"failed"`) | `ports.py`, `import_messages.py` | `RunStatus` StrEnum (avoid "stringly typed" code) |
+| W13 ✅ | ~~Run status is a free string~~ **Fixed:** `RunStatus` StrEnum | `ports.py`, `import_messages.py` | `RunStatus` StrEnum (avoid "stringly typed" code) |
 | W14 ✅ | ~~`update_id: true` (a boolean) is accepted as `1`~~ **Fixed** with a `TypeGuard` helper `_is_int` | [parser.py:122](../kiakia/adapters/telegram/parser.py) | `type(update_id) is int` |
-| W15 | `channel` column has no CHECK, while `direction` and `kind` do | migration 0001 | Add it in migration `0002` |
-| W16 | Foreign keys without indexes (`contact_identities.contact_id`, `conversations.contact_id`) | migration 0001 | Indexes in `0002` |
+| W15 ✅ | ~~`channel` column has no CHECK~~ **Fixed** in migration `0002`, with a test that every `Channel` is accepted | migration 0001 | Add it in migration `0002` |
+| W16 ✅ | ~~Foreign keys without indexes~~ **Fixed** in migration `0002` | migration 0001 | Indexes in `0002` |
 | W17 | 4–6 SQL statements per message (N+1 pattern) | `repository.py:76` | Batch with `executemany` when volumes grow |
 | W18 | Plain-text logs, no metrics | everywhere | Structured JSON logs + counters (later: OpenTelemetry) |
 | W19 | No tests for `TelegramSource` or `cli.py` (config tests ✅ added in Sprint 1) | `tests/` | Add them; measure coverage with `pytest-cov` |
@@ -475,7 +505,7 @@ flowchart LR
         A4["W6/W7 safe config<br/>(pydantic-settings)"]
         A5["W14 strict update_id"]
     end
-    subgraph S2["Sprint 2: architecture polish (1 day)"]
+    subgraph S2["✅ Sprint 2: architecture polish (DONE)"]
         B1["W8 bootstrap.py"]
         B2["W9 GetStats use case"]
         B3["W10 close connections"]

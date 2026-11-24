@@ -7,6 +7,7 @@ Every channel adapter converts its own format into these classes.
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Any
 
 
 class Channel(StrEnum):
@@ -21,6 +22,14 @@ class Channel(StrEnum):
 class Direction(StrEnum):
     IN = "in"  # from the customer
     OUT = "out"  # from the business
+
+
+class RunStatus(StrEnum):
+    """Outcome of one import run (matches the CHECK constraint on import_runs.status)."""
+
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 class MessageKind(StrEnum):
@@ -63,10 +72,11 @@ class Message:
 
 @dataclass(frozen=True)
 class Reject:
-    """A record we could not use, and why. Counted and logged, never fatal."""
+    """A record we could not use, and why. Counted, logged and kept (dead letter), never fatal."""
 
     reason: str
     ref: str | None = None  # e.g. the update id, to find it again
+    raw: Any = field(default=None, compare=False)  # the original payload, for inspection/replay
 
 
 @dataclass
@@ -91,3 +101,13 @@ class WaitingCustomer:
 
     def waited(self, now: datetime) -> timedelta:
         return now - self.waiting_since
+
+
+@dataclass(frozen=True)
+class InboxStats:
+    """A quick overview of what Kiakia holds."""
+
+    contacts: int
+    conversations: int
+    messages: int
+    by_kind: dict[MessageKind, int]

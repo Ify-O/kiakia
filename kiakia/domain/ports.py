@@ -7,7 +7,7 @@ cases don't change. Each port is small (interface segregation).
 
 from typing import Protocol
 
-from .models import FetchResult, Message, WaitingCustomer
+from .models import FetchResult, InboxStats, Message, Reject, RunStatus, WaitingCustomer
 
 
 class MessageSource(Protocol):
@@ -31,6 +31,14 @@ class MessageRepository(Protocol):
         ...
 
 
+class RejectStore(Protocol):
+    """Dead-letter storage: keeps records we couldn't parse, so they can be inspected or replayed."""
+
+    def save_rejects(self, source: str, rejects: list[Reject]) -> int:
+        """Store rejects idempotently (same source + ref is stored once). Returns how many were new."""
+        ...
+
+
 class CursorStore(Protocol):
     def get_cursor(self, source: str) -> str | None: ...
 
@@ -41,5 +49,11 @@ class ImportRunLog(Protocol):
     def start_run(self, source: str) -> int: ...
 
     def finish_run(
-        self, run_id: int, *, status: str, seen: int, saved: int, bad: int, error: str | None = None
+        self, run_id: int, *, status: RunStatus, seen: int, saved: int, bad: int, error: str | None = None
     ) -> None: ...
+
+
+class StatsQuery(Protocol):
+    """Read-only overview numbers (kept separate from MessageRepository: interface segregation)."""
+
+    def inbox_stats(self) -> InboxStats: ...

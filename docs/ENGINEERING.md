@@ -92,8 +92,9 @@ kiakia/
     telegram/        client.py (HTTP), parser.py (JSON → domain), source.py (implements MessageSource)
     postgres/        repository.py (implements MessageRepository)
   infrastructure/    http.py (shared resilient HTTP), logging.py
-  config.py          settings from environment variables (.env)
-  cli.py             composition root + command line
+  config.py          validated settings (pydantic-settings) from env / .env
+  bootstrap.py       composition root: builds adapters + use cases, owns connections
+  cli.py             command line: parse commands, print results
 migrations/          Alembic database migrations (versioned schema)
 tests/
   unit/              fast; no network, no database (fakes + recorded JSON)

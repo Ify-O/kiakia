@@ -7,7 +7,7 @@ import psycopg
 import pytest
 
 from kiakia.adapters.postgres.repository import PostgresStore
-from kiakia.domain.models import Channel, Direction, Message, MessageKind, Sender
+from kiakia.domain.models import Channel, Direction, Message, MessageKind, Reject, RunStatus, Sender
 
 pytestmark = pytest.mark.integration
 
@@ -91,7 +91,7 @@ def test_cursor_round_trip(conn):
 def test_import_run_log(conn):
     store = PostgresStore(conn)
     run_id = store.start_run("telegram")
-    store.finish_run(run_id, status="succeeded", seen=8, saved=5, bad=1)
+    store.finish_run(run_id, status=RunStatus.SUCCEEDED, seen=8, saved=5, bad=1)
     with conn.cursor() as cur:
         cur.execute(
             "SELECT status, records_seen, records_saved, records_bad, finished_at IS NOT NULL "
@@ -107,3 +107,49 @@ def test_failed_batch_saves_nothing(conn):
     with pytest.raises(psycopg.IntegrityError):
         store.save_messages([good, bad])
     assert count(conn, "messages") == 0  # all or nothing
+
+
+def test_inbox_stats(conn):
+    store = PostgresStore(conn)
+    store.save_messages(
+        [
+            msg("9001", 1, 0, ADA),
+            msg("9001", 2, 1, ADA, body=None, kind=MessageKind.VOICE),
+            msg("9002", 1, 2, BAYO),
+        ]
+    )
+    st = store.inbox_stats()
+    assert (st.contacts, st.conversations, st.messages) == (2, 2, 3)
+    assert st.by_kind == {MessageKind.TEXT: 2, MessageKind.VOICE: 1}
+
+
+def test_database_accepts_every_channel_the_domain_knows(conn):
+    # Guards against the domain enum and the DB CHECK constraint drifting apart (W15).
+    store = PostgresStore(conn)
+    for i, channel in enumerate(Channel):
+        store.save_messages([replace(msg(f"c{i}", 1, i, Sender(f"s{i}", "X")), channel=channel)])
+    assert count(conn, "messages") == len(Channel)
+
+
+def test_database_rejects_an_unknown_channel(conn):
+    with pytest.raises(psycopg.errors.CheckViolation), conn.cursor() as cur:
+        cur.execute("INSERT INTO contacts (display_name) VALUES ('x') RETURNING id")
+        cur.execute(
+            "INSERT INTO contact_identities (contact_id, channel, external_id) VALUES (%s, 'myspace', '1')",
+            (cur.fetchone()[0],),
+        )
+
+
+def test_rejects_are_kept_with_their_raw_json_and_not_duplicated(conn):
+    store = PostgresStore(conn)
+    bad = [
+        Reject("missing message.date", "500007", raw={"update_id": 500007, "message": {"text": "hi"}}),
+        Reject("update is not an object", None, raw="garbage"),
+    ]
+    assert store.save_rejects("telegram", bad) == 2
+    assert store.save_rejects("telegram", bad[:1]) == 0  # same update again: stored once
+    with conn.cursor() as cur:
+        cur.execute("SELECT ref, reason, raw FROM rejected_updates ORDER BY id")
+        rows = cur.fetchall()
+    assert rows[0] == ("500007", "missing message.date", {"update_id": 500007, "message": {"text": "hi"}})
+    assert rows[1][2] == "garbage"
