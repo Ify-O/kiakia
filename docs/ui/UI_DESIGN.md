@@ -210,6 +210,20 @@ official logos), always with the name as a tooltip / screen-reader label.
 ### 8.3 Light / dark switch (UI only)
 A header button cycles **🌗 Auto → ☀️ Light → 🌙 Dark**, remembered on the device. Auto follows the phone.
 
+### 8.3b "Customers waiting" is a traffic light (UI only)
+The most important card on the dashboard changes its **whole colour**, so it can be read from across the shop:
+
+| Situation | Card | Text | Icon |
+|---|---|---|---|
+| Anyone waiting | **Solid red** `#DC2626`, gently pulsing | "5 customers waiting for a reply right now · tap to answer" | 🚨 |
+| Nobody waiting | **Solid green** `#15803D` | "nobody waiting · all caught up 🎉" | ✅ |
+
+- The same strong red and green are used in light **and** dark mode, so white text always has good
+  contrast (WCAG AA).
+- The colour is never the only signal: the icon and the words change too (colour-blind friendly).
+- The pulse stops for people who turn on "reduce motion" on their phone.
+- Tapping the card opens the Inbox on the Waiting tab. Data: `stats.waiting`.
+
 ### 8.4 Filters (contract: ADR 0006 §1)
 Inbox filters: **status tabs** (Waiting / Answered / Resolved / All), **platform toggles** (tap the icons),
 **date** (Any time, Today, Yesterday, Last 7 days, Last 30 days, Custom range), **category**, and search.

@@ -79,7 +79,15 @@
   .kpi { padding: 12px 14px; text-align: left; border: 1px solid var(--line); }
   .kpi b { display: block; font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .kpi small { color: var(--muted); display: block; }
-  .kpi.hot b { color: var(--red); }
+  /* "Traffic light" card: red while anyone waits, green when everyone has a reply */
+  /* Fixed strong colours (same in light and dark mode) so white text always has good contrast */
+  .kpi.alert { background: #DC2626; border-color: #DC2626; color: #fff; animation: alertPulse 2s ease-in-out infinite; }
+  .kpi.alert small { color: rgba(255,255,255,.92); }
+  .kpi.clear { background: #15803D; border-color: #15803D; color: #fff; }
+  .kpi.clear small { color: rgba(255,255,255,.92); }
+  .kpi .sig { font-size: 20px; float: right; }
+  @keyframes alertPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); } }
+  @media (prefers-reduced-motion: reduce) { .kpi.alert { animation: none; } }
   button.kpi { background: var(--surface); width: 100%; }
   button.kpi:hover { outline: 2px solid var(--brand); }
   .ring { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; float: right;
@@ -411,7 +419,10 @@ function renderDash() {
   const oldest = waitingAll[0];
   const rr = s.responseRate === null ? null : Math.round(s.responseRate * 100);
   $("kpis").innerHTML = `
-    <div class="card kpi ${waitingAll.length ? "hot" : ""}"><b>${waitingAll.length}</b><small>customers waiting for a reply right now</small></div>
+    <button class="card kpi ${waitingAll.length ? "alert" : "clear"}" data-goto="inbox" role="status"
+      aria-label="${waitingAll.length ? `${waitingAll.length} customers waiting for a reply. Open the inbox.` : "Nobody is waiting. All caught up."}">
+      <span class="sig" aria-hidden="true">${waitingAll.length ? "🚨" : "✅"}</span>
+      <b>${waitingAll.length}</b><small>${waitingAll.length ? `customer${waitingAll.length === 1 ? "" : "s"} waiting for a reply right now · tap to answer` : "nobody waiting · all caught up 🎉"}</small></button>
     <div class="card kpi"><b data-dur="${oldest?.waitingSince ?? ""}">${oldest ? dur(age(oldest.waitingSince)) : "–"}</b>
       <small>${oldest ? `longest wait: ${esc(oldest.contact.displayName)}, since ${when(oldest.waitingSince)}` : "nobody is waiting 🎉"}</small></div>
     <div class="card kpi"><span class="ring" style="--p:${rr ?? 0}" aria-hidden="true"><i>${rr === null ? "" : rr >= 80 ? "👍" : rr >= 50 ? "🙂" : "⚠️"}</i></span><b>${rr ?? "–"}${rr === null ? "" : "%"}</b><small>response rate: chats answered or resolved</small></div>
