@@ -1,6 +1,6 @@
 """Integration tests: PostgresStore against a real PostgreSQL (in Docker)."""
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg2
 import pytest
@@ -10,7 +10,7 @@ from kiakia.domain.models import Channel, Direction, Message, MessageKind, Sende
 
 pytestmark = pytest.mark.integration
 
-T0 = datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
 ADA = Sender("9001", "Ada Test", "ada_test")
 BAYO = Sender("9002", "Bayo", None)
 

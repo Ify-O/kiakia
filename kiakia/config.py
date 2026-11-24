@@ -2,10 +2,10 @@
 
 One place for configuration, so no other module reads os.environ directly.
 """
-from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -22,6 +22,7 @@ class Settings:
     db_host: str
     db_port: int
     telegram_bot_token: str
+    business_tz: ZoneInfo
 
     @property
     def database_url(self) -> str:
@@ -40,6 +41,13 @@ def _required(name: str) -> str:
     return value
 
 
+def _timezone(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ConfigError(f"Unknown BUSINESS_TIMEZONE {name!r} (example: Africa/Lagos)") from exc
+
+
 def load_settings(require_telegram: bool = True) -> Settings:
     load_dotenv()
     return Settings(
@@ -48,6 +56,7 @@ def load_settings(require_telegram: bool = True) -> Settings:
         db_name=_required("POSTGRES_DB"),
         db_host=os.getenv("POSTGRES_HOST", "localhost"),
         db_port=int(os.getenv("POSTGRES_PORT", "55432")),
+        business_tz=_timezone(os.getenv("BUSINESS_TIMEZONE", "Africa/Lagos")),
         telegram_bot_token=_required("TELEGRAM_BOT_TOKEN") if require_telegram
         else os.getenv("TELEGRAM_BOT_TOKEN", ""),
     )

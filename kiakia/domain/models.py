@@ -3,15 +3,13 @@
 This module has NO dependencies on Telegram, Meta, HTTP or the database.
 Every channel adapter converts its own format into these classes.
 """
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import List, Optional
+from enum import StrEnum
 
 
-class Channel(str, Enum):
+class Channel(StrEnum):
     TELEGRAM = "telegram"
     MESSENGER = "messenger"
     INSTAGRAM = "instagram"
@@ -20,12 +18,12 @@ class Channel(str, Enum):
     EMAIL = "email"
 
 
-class Direction(str, Enum):
+class Direction(StrEnum):
     IN = "in"     # from the customer
     OUT = "out"   # from the business
 
 
-class MessageKind(str, Enum):
+class MessageKind(StrEnum):
     TEXT = "text"
     VOICE = "voice"
     AUDIO = "audio"
@@ -41,7 +39,7 @@ class Sender:
     """Who sent a message, as known on one channel."""
     external_id: str
     display_name: str
-    username: Optional[str] = None
+    username: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,8 +51,8 @@ class Message:
     kind: MessageKind
     sent_at: datetime            # must be timezone-aware (we store UTC)
     sender: Sender
-    body: Optional[str] = None   # text or caption
-    media_ref: Optional[str] = None  # platform file id (e.g. a voice note to download later)
+    body: str | None = None   # text or caption
+    media_ref: str | None = None  # platform file id (e.g. a voice note to download later)
 
     def __post_init__(self) -> None:
         # Guard rule: a naive datetime would silently shift by the server's time zone.
@@ -66,16 +64,16 @@ class Message:
 class Reject:
     """A record we could not use, and why. Counted and logged, never fatal."""
     reason: str
-    ref: Optional[str] = None    # e.g. the update id, to find it again
+    ref: str | None = None    # e.g. the update id, to find it again
 
 
 @dataclass
 class FetchResult:
     """What a MessageSource returns for one fetch."""
-    messages: List[Message] = field(default_factory=list)
-    rejects: List[Reject] = field(default_factory=list)
+    messages: list[Message] = field(default_factory=list)
+    rejects: list[Reject] = field(default_factory=list)
     ignored: int = 0                   # valid updates we deliberately skip (e.g. group chats)
-    next_cursor: Optional[str] = None  # where to continue next time; None = nothing new
+    next_cursor: str | None = None  # where to continue next time; None = nothing new
 
 
 @dataclass(frozen=True)
@@ -85,7 +83,7 @@ class WaitingCustomer:
     channel: Channel
     external_chat_id: str
     waiting_since: datetime
-    last_message_preview: Optional[str]
+    last_message_preview: str | None
 
     def waited(self, now: datetime) -> timedelta:
         return now - self.waiting_since

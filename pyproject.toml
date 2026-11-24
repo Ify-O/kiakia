@@ -10,13 +10,36 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "requests>=2.34.2",
     "sqlalchemy>=2.1.9",
+    "tzdata>=2026.6",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "ruff>=0.17.6",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: needs PostgreSQL running in Docker (docker compose up -d)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes (unused imports, undefined names)
+    "I",        # import sorting
+    "UP",       # pyupgrade: modern Python syntax
+    "B",        # bugbear: likely bugs
+    "SIM",      # simplifications
+    "S",        # bandit: security checks
+    "RUF",      # ruff-specific
+]
+ignore = ["RUF001", "RUF002", "RUF003"]  # allow ₦ and typographic characters in text
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S608"]   # assert and test-only SQL are fine in tests
+"migrations/versions/**" = ["E501"]  # applied migrations are never edited, not even for style

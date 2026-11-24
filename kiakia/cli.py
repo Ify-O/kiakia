@@ -9,12 +9,11 @@ know the ports. Swapping Telegram for Meta later means changing wiring here.
     python -m kiakia.cli waiting             # customers still waiting for a reply
     python -m kiakia.cli stats               # what's in the database
 """
-from __future__ import annotations
 
 import argparse
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
@@ -23,12 +22,6 @@ from kiakia.application.import_messages import ImportMessages
 from kiakia.application.waiting import ListWaitingCustomers
 from kiakia.config import ConfigError, Settings, load_settings
 from kiakia.domain.errors import KiakiaError
-
-try:
-    from zoneinfo import ZoneInfo
-    LOCAL_TZ = ZoneInfo("Africa/Lagos")   # stored in UTC, shown in business time
-except Exception:                          # pragma: no cover
-    LOCAL_TZ = timezone.utc
 
 
 def _store(settings: Settings) -> PostgresStore:
@@ -57,15 +50,16 @@ def _ago(delta) -> str:
 
 
 def cmd_waiting(args) -> None:
-    store = _store(load_settings(require_telegram=False))
+    settings = load_settings(require_telegram=False)
+    store = _store(settings)
     waiting = ListWaitingCustomers(store).run()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if not waiting:
         print("Nobody is waiting. Every customer has a reply. 🎉")
         return
     print(f"{len(waiting)} customer(s) waiting for a reply (oldest first):\n")
     for w in waiting:
-        local = w.waiting_since.astimezone(LOCAL_TZ)
+        local = w.waiting_since.astimezone(settings.business_tz)  # stored in UTC, shown locally
         preview = (w.last_message_preview or "")[:50]
         print(f"  ⏳ {w.contact_name[:24]:24}  {w.channel.value:9}  waiting {_ago(w.waited(now)):>12}"
               f"  (since {local:%d %b %H:%M})  \"{preview}\"")

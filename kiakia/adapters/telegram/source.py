@@ -1,7 +1,4 @@
 """TelegramSource: implements the MessageSource port by combining client + parser."""
-from __future__ import annotations
-
-from typing import Optional
 
 from kiakia.domain.models import FetchResult
 
@@ -15,7 +12,7 @@ class TelegramSource:
     def __init__(self, client: TelegramClient):
         self._client = client
 
-    def fetch(self, cursor: Optional[str], limit: int) -> FetchResult:
+    def fetch(self, cursor: str | None, limit: int) -> FetchResult:
         offset = int(cursor) if cursor else None
         updates = self._client.get_updates(offset=offset, limit=limit)
         return parse_updates(updates)

@@ -4,9 +4,6 @@ Implements the MessageRepository, CursorStore and ImportRunLog ports.
 All SQL is parameterised (%s placeholders), never built from strings.
 The connection is passed in (dependency injection), so tests can use their own.
 """
-from __future__ import annotations
-
-from typing import List, Optional
 
 import psycopg2
 from psycopg2.extensions import connection as Connection
@@ -25,24 +22,28 @@ def connect(host: str, port: int, user: str, password: str, dbname: str) -> Conn
                                  f"{str(exc).strip().splitlines()[0]}") from exc
 
 
+_TOUCH_INBOUND = "UPDATE conversations SET last_inbound_at = GREATEST(last_inbound_at, %s) WHERE id = %s"
+_TOUCH_OUTBOUND = "UPDATE conversations SET last_outbound_at = GREATEST(last_outbound_at, %s) WHERE id = %s"
+
+
 class PostgresStore:
     def __init__(self, conn: Connection):
         self._conn = conn
 
     # ---------- MessageRepository ----------
 
-    def save_messages(self, messages: List[Message]) -> int:
+    def save_messages(self, messages: list[Message]) -> int:
         """Save a batch in ONE transaction: all or nothing. Idempotent."""
         if not messages:
             return 0
         try:
-            with self._conn:                       # commit on success, rollback on error
-                with self._conn.cursor() as cur:
-                    for m in messages:
-                        contact_id = self._contact_id(cur, m)
-                        conversation_id = self._conversation_id(cur, m, contact_id)
-                        self._upsert_message(cur, m, conversation_id)
-                        self._touch_conversation(cur, m, conversation_id)
+            # `with self._conn` = one transaction: commit on success, rollback on any error.
+            with self._conn, self._conn.cursor() as cur:
+                for m in messages:
+                    contact_id = self._contact_id(cur, m)
+                    conversation_id = self._conversation_id(cur, m, contact_id)
+                    self._upsert_message(cur, m, conversation_id)
+                    self._touch_conversation(cur, m, conversation_id)
         except psycopg2.OperationalError as exc:
             raise StorageUnavailable(f"saving messages failed: {exc}") from exc
         return len(messages)
@@ -93,13 +94,12 @@ class PostgresStore:
              m.direction.value, m.kind.value, m.body, m.media_ref, m.sent_at))
 
     def _touch_conversation(self, cur, m: Message, conversation_id: int) -> None:
-        # Column names can't be %s parameters; this one comes from a fixed pair, never from input.
-        column = "last_inbound_at" if m.direction is Direction.IN else "last_outbound_at"
         # GREATEST ignores NULL, so the first message sets it and older ones never move it back.
-        cur.execute(f"UPDATE conversations SET {column} = GREATEST({column}, %s) WHERE id = %s",
-                    (m.sent_at, conversation_id))
+        # Two fixed statements: no SQL is ever built from strings.
+        sql = _TOUCH_INBOUND if m.direction is Direction.IN else _TOUCH_OUTBOUND
+        cur.execute(sql, (m.sent_at, conversation_id))
 
-    def waiting_customers(self) -> List[WaitingCustomer]:
+    def waiting_customers(self) -> list[WaitingCustomer]:
         with self._conn.cursor() as cur:
             cur.execute("""
                 SELECT ct.display_name, cv.channel, cv.external_chat_id,
@@ -122,7 +122,7 @@ class PostgresStore:
 
     # ---------- CursorStore ----------
 
-    def get_cursor(self, source: str) -> Optional[str]:
+    def get_cursor(self, source: str) -> str | None:
         with self._conn.cursor() as cur:
             cur.execute("SELECT cursor FROM sync_cursors WHERE source = %s", (source,))
             row = cur.fetchone()
@@ -144,7 +144,7 @@ class PostgresStore:
             return cur.fetchone()[0]
 
     def finish_run(self, run_id: int, *, status: str, seen: int, saved: int,
-                   bad: int, error: Optional[str] = None) -> None:
+                   bad: int, error: str | None = None) -> None:
         with self._conn, self._conn.cursor() as cur:
             cur.execute(
                 """UPDATE import_runs SET finished_at = now(), status = %s, records_seen = %s,

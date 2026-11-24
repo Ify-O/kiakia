@@ -10,11 +10,9 @@ Order matters for reliability ("save first, confirm second"):
 If we crash between 2 and 3, the next run re-fetches the same messages and
 the idempotent save ignores the duplicates. Nothing is lost, nothing is doubled.
 """
-from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from kiakia.domain.ports import CursorStore, ImportRunLog, MessageRepository, MessageSource
 
@@ -39,7 +37,7 @@ class ImportMessages:
         self.runs = runs
         self.batch_size = batch_size
 
-    def run(self, max_records: Optional[int] = None, max_batches: int = 1000) -> ImportSummary:
+    def run(self, max_records: int | None = None, max_batches: int = 1000) -> ImportSummary:
         summary = ImportSummary()
         run_id = self.runs.start_run(self.source.name)
         try:

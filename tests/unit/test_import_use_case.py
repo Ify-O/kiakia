@@ -2,19 +2,18 @@
 
 No Telegram, no database: this is what decoupling buys us.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from kiakia.application.import_messages import ImportMessages
 from kiakia.domain.errors import SourceUnavailable
-from kiakia.domain.models import (Channel, Direction, FetchResult, Message, MessageKind, Reject,
-                                  Sender)
+from kiakia.domain.models import Channel, Direction, FetchResult, Message, MessageKind, Reject, Sender
 
 
 def message(i):
     return Message(Channel.TELEGRAM, "1", str(i), Direction.IN, MessageKind.TEXT,
-                   datetime(2026, 1, 1, tzinfo=timezone.utc), Sender("1", "Ada"), f"m{i}")
+                   datetime(2026, 1, 1, tzinfo=UTC), Sender("1", "Ada"), f"m{i}")
 
 
 class FakeSource:

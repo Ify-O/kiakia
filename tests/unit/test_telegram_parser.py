@@ -1,6 +1,6 @@
 """Unit tests for the Telegram parser. Fake data only (tests/fixtures)."""
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -43,7 +43,7 @@ def test_text_message_is_cleaned_and_in_utc(result):
     assert m.direction is Direction.IN
     assert m.kind is MessageKind.TEXT
     assert m.body == "Hello, how much is the blue bag?"
-    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=timezone.utc)
+    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=UTC)
     assert m.sender.display_name == "Ada Test"
     assert m.sender.username == "ada_test"
 
@@ -66,7 +66,7 @@ def test_photo_uses_largest_size_and_caption(result):
 def test_edited_message_has_same_key_and_new_text(result):
     m = by_id(result, "9001", "11")
     assert m.body == "Hello, how much is the blue bag in size L?"
-    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=timezone.utc)  # original time
+    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=UTC)  # original time
 
 
 def test_sender_without_any_name_gets_a_fallback(result):
