@@ -1,6 +1,6 @@
-# ChatDesk: Project Plan
+# Kiakia: Project Plan
 
-> *ChatDesk is a working name; change it any time.*
+> *Kiakia* means "quickly" in Yoruba: every customer, answered fast.
 > This is the plan we build from. Update it whenever a decision changes.
 
 ## 1. The idea in one sentence
@@ -24,7 +24,7 @@ or elsewhere in Africa, who:
 
 ## 3. Problems, in priority order
 
-| # | Problem (in my words) | What ChatDesk does about it |
+| # | Problem (in my words) | What Kiakia does about it |
 |---|---|---|
 | **1** | *"When I'm busy, I miss and forget to reply to customers."* | **Waiting list + alerts.** One list of every customer whose last message has no reply, sorted by how long they've waited. An alert when someone has waited too long. A daily "missed customers" summary. |
 | **2** | *"I have a sales rep and I don't know how she's replying or how fast."* | **Staff view.** Each reply records *who* sent it. The owner sees each person's response times, chats handled, and chats left waiting. The owner can read every conversation. |
@@ -35,7 +35,7 @@ or elsewhere in Africa, who:
 ## 4. What makes us different (USP)
 
 Competitors (Simpu, NativeTalk, Chatwoot, respond.io) are built like **customer-support
-software for teams**. ChatDesk is built for **the owner-seller**:
+software for teams**. Kiakia is built for **the owner-seller**:
 
 1. **"No customer left waiting"** is the main screen, not a report hidden in a menu.
 2. **The owner sees how staff are doing**: who replied, how fast, and who was missed.
@@ -78,7 +78,7 @@ Consequences:
   key of channel plus the platform's message ID (idempotency).
 - **Show a reply-window countdown** so a sale isn't lost because the 24h window closed.
 - **Imported history can't tell us WHICH staff member replied.** Meta only says "the Page
-  replied". Staff tracking (P2) works only for replies sent *through ChatDesk*.
+  replied". Staff tracking (P2) works only for replies sent *through Kiakia*.
 - **My own accounts need no app review.** As the admin of my own Meta app (development
   mode), I can use my own Page, Instagram and WhatsApp test number. Serving other
   businesses later needs Meta app review and business verification.
@@ -133,7 +133,7 @@ connector, and nothing else changes.
 
 | Table | Holds | Key columns |
 |---|---|---|
-| `businesses` | The business using ChatDesk | name, timezone (e.g. Africa/Lagos) |
+| `businesses` | The business using Kiakia | name, timezone (e.g. Africa/Lagos) |
 | `users` | Owner and staff | email (unique), name, role `owner`/`agent` |
 | `channel_accounts` | A connected Page, Instagram account or WhatsApp number | platform, external_id, access token (**encrypted, never in git**) |
 | `contacts` | A customer | display name |
@@ -160,7 +160,7 @@ Each week builds on the last. Adjust when each week's assignment brief comes out
 |---|---|---|
 | **1** | **Importer:** call Meta's Graph API (Conversations API) for my own Facebook Page and Instagram, parse the messages, store them in Postgres (Docker) through a repository layer, idempotently. Plus a **"who's waiting" query** on the real data. | Client (timeouts, retries, rate limit), parser, schema, repository, no duplicates. **P1 is already visible.** |
 | 2 | **Webhooks:** a FastAPI endpoint receives new messages live (ngrok). Add the WhatsApp Cloud API test number. | Real-time messages, duplicate-safe |
-| 3 | **Inbox + replies:** a REST API and a simple web inbox. Reply from ChatDesk, with a reply-window countdown. Staff logins. | P5: one inbox. Replies record who sent them |
+| 3 | **Inbox + replies:** a REST API and a simple web inbox. Reply from Kiakia, with a reply-window countdown. Staff logins. | P5: one inbox. Replies record who sent them |
 | 4 | **Alerts + staff stats:** waiting alerts, daily summary, per-staff response times. | P1 + P2 |
 | 5 | **Voice notes:** download the audio, transcribe it, show the text. | P3 |
 | 6 | **Payments:** Paystack payment link from a chat, plus a webhook that marks it "Paid ✅". | P4 |
@@ -181,10 +181,10 @@ Each week builds on the last. Adjust when each week's assignment brief comes out
 
 **Then we build:**
 - `docker-compose.yml` + `db/schema.sql`
-- `chatdesk/client.py`: Graph API client with timeouts, retries and backoff, respecting Meta's rate-limit headers, and following pagination
-- `chatdesk/parser.py`: Meta JSON → our `Message` and `Conversation` models; handles missing fields, dates (UTC) and bad records
-- `chatdesk/repository.py`: idempotent upserts keyed on the platform's message ID
-- `chatdesk/import_messages.py`: run the import, then print **"customers waiting for a reply"**
+- `kiakia/client.py`: Graph API client with timeouts, retries and backoff, respecting Meta's rate-limit headers, and following pagination
+- `kiakia/parser.py`: Meta JSON → our `Message` and `Conversation` models; handles missing fields, dates (UTC) and bad records
+- `kiakia/repository.py`: idempotent upserts keyed on the platform's message ID
+- `kiakia/import_messages.py`: run the import, then print **"customers waiting for a reply"**
 - `README.md`: which API and why, how to run it, surprises in the data
 
 **Demo on Saturday:** my real conversations in Postgres, plus the list of customers still waiting for a reply.
@@ -206,9 +206,9 @@ Each week builds on the last. Adjust when each week's assignment brief comes out
 | Whisper may be weak on Pidgin, Yoruba, Igbo or Hausa | Test real voice notes in week 5 before promising it; try other models if needed |
 | App review and business verification for other businesses | Not needed while I'm the only user; plan for it before onboarding others |
 | Competitors (Simpu, NativeTalk) copy features | Stay focused on the owner-seller and talk to real sellers |
-| Old history doesn't show which staff member replied | Staff stats start from the day replies go through ChatDesk |
+| Old history doesn't show which staff member replied | Staff stats start from the day replies go through Kiakia |
 
 **Open questions:**
-- Final product name?
+- ~~Final product name?~~ Decided: **Kiakia**.
 - Alert limit: is 15 minutes right? Does it apply only during business hours?
 - Should the sales rep see *all* chats, or only those assigned to her?
