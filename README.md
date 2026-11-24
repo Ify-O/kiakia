@@ -28,7 +28,7 @@ Messaging only: no CRM, no marketing broadcasts.
 ### Architecture (Clean Architecture / Ports and Adapters)
 
 ```
-cli.py (composition root: wires real adapters into use cases)
+cli.py (commands + printing) → bootstrap.py (composition root: wires adapters into use cases)
   └─ application/   ImportMessages, ListWaitingCustomers      ← depend only on ports
        └─ domain/   Message, Sender, WaitingCustomer + PORTS  ← no dependencies at all
             ▲ implemented by
@@ -86,7 +86,7 @@ Run the import as often as you like: a second run never creates duplicates.
 uv run ruff check .        # lint (incl. security rules)
 uv run ruff format .       # format
 uv run mypy                # strict type checking
-uv run pytest              # 45 unit + integration tests
+uv run pytest              # 54 unit + integration tests
 ```
 
 The same checks run automatically on GitHub for every push and pull request
@@ -102,6 +102,7 @@ The same checks run automatically on GitHub for every push and pull request
 | `messages` | Every message; unique on `(channel, external_chat_id, external_message_id)`; times in UTC |
 | `sync_cursors` | Where each source continues from (Telegram's update offset) |
 | `import_runs` | One row per import: status, seen, saved, bad, error |
+| `rejected_updates` | Dead letter: updates we couldn't parse, with the original JSON, so nothing is lost |
 | `alembic_version` | Which migration the database is at |
 
 ### Surprising things in the data
