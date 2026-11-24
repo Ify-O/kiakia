@@ -1,0 +1,20 @@
+# Secrets: never commit these
+.env
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Private customer data / local exports
+exports/
+*.ogg
+*.mp3
+*.m4a
+
+# OS / editor
+.DS_Store
+.vscode/
