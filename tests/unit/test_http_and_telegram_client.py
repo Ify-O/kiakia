@@ -3,6 +3,7 @@
 No network: a fake session returns prepared responses, and a fake sleep
 records the waits instead of actually waiting.
 """
+
 import pytest
 import requests
 
@@ -16,6 +17,7 @@ def response(status, json_body=None, headers=None):
     r.status_code = status
     r.headers.update(headers or {})
     import json
+
     r._content = json.dumps(json_body if json_body is not None else {}).encode()
     return r
 
@@ -39,8 +41,14 @@ class FakeSession:
 def make_client(outcomes, **kw):
     sleeps = []
     session = FakeSession(outcomes)
-    http = ResilientHttpClient(session=session, sleep=sleeps.append, clock=lambda: 0.0,
-                               min_interval=0, retry=RetryPolicy(jitter=0), **kw)
+    http = ResilientHttpClient(
+        session=session,
+        sleep=sleeps.append,
+        clock=lambda: 0.0,
+        min_interval=0,
+        retry=RetryPolicy(jitter=0),
+        **kw,
+    )
     return http, session, sleeps
 
 
@@ -52,10 +60,11 @@ def test_success_first_time_uses_timeouts():
 
 
 def test_retries_transient_errors_with_exponential_backoff():
-    http, session, sleeps = make_client([
-        requests.Timeout(), requests.ConnectionError(), response(503), response(200, {"ok": 1})])
+    http, session, sleeps = make_client(
+        [requests.Timeout(), requests.ConnectionError(), response(503), response(200, {"ok": 1})]
+    )
     assert http.get_json("https://example.test") == {"ok": 1}
-    assert sleeps == [1.0, 2.0, 4.0]          # 1s, 2s, 4s
+    assert sleeps == [1.0, 2.0, 4.0]  # 1s, 2s, 4s
     assert len(session.calls) == 4
 
 
@@ -63,7 +72,7 @@ def test_gives_up_after_max_attempts():
     http, _, sleeps = make_client([response(500)] * 5)
     with pytest.raises(SourceUnavailable):
         http.get_json("https://example.test", label="demo")
-    assert len(sleeps) == 4                   # no sleep after the final attempt
+    assert len(sleeps) == 4  # no sleep after the final attempt
 
 
 def test_permanent_error_fails_fast_without_retry():
@@ -95,10 +104,9 @@ def test_errors_never_contain_the_url():
 def test_min_interval_spaces_out_requests():
     sleeps, now = [], [0.0]
     session = FakeSession([response(200, {}), response(200, {})])
-    http = ResilientHttpClient(session=session, sleep=sleeps.append, clock=lambda: now[0],
-                               min_interval=1.0)
+    http = ResilientHttpClient(session=session, sleep=sleeps.append, clock=lambda: now[0], min_interval=1.0)
     http.get_json("https://example.test")
-    now[0] = 0.25                              # second call only 0.25s later
+    now[0] = 0.25  # second call only 0.25s later
     http.get_json("https://example.test")
     assert sleeps == [0.75]
 
@@ -113,7 +121,7 @@ def test_telegram_client_sends_offset_and_returns_result():
     client = TelegramClient("123:ABC", http=http)
     assert client.get_updates(offset=42, limit=500) == [{"update_id": 1}]
     params = session.calls[0]["params"]
-    assert params["offset"] == 42 and params["limit"] == 100   # capped at Telegram's max
+    assert params["offset"] == 42 and params["limit"] == 100  # capped at Telegram's max
     assert "123:ABC" not in repr(client)
 
 

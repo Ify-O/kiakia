@@ -1,11 +1,8 @@
 """Kiakia's own error types.
 
-Adapters translate library errors (requests, psycopg2) into these, so inner
+Adapters translate library errors (requests, psycopg) into these, so inner
 layers never depend on those libraries (docs/ENGINEERING.md §4).
 """
-from __future__ import annotations
-
-from typing import Optional
 
 
 class KiakiaError(Exception):
@@ -19,7 +16,7 @@ class SourceUnavailable(KiakiaError):
 class RateLimited(SourceUnavailable):
     """The source told us to slow down."""
 
-    def __init__(self, message: str, retry_after: Optional[float] = None):
+    def __init__(self, message: str, retry_after: float | None = None):
         super().__init__(message)
         self.retry_after = retry_after
 

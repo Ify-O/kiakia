@@ -49,7 +49,7 @@ migrations/           Alembic: versioned database schema
 
 ### How to run
 
-Requirements: Python 3.9+, Docker (with Compose), a Telegram bot token from @BotFather.
+Requirements: [uv](https://docs.astral.sh/uv/) (installs Python 3.12 and all packages), Docker (with Compose), a Telegram bot token from @BotFather.
 
 ```bash
 # 1. Settings: copy the example and fill in a DB password + your bot token
@@ -59,27 +59,37 @@ cp .env.example .env
 docker compose up -d
 #    no "docker compose" (e.g. Colima)? -> brew install docker-compose, then: docker-compose up -d
 
-# 3. Install Python dependencies
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# 3. Install Python 3.12 + all packages, exactly as pinned in uv.lock
+uv sync
 
 # 4. Create the tables (database migrations)
-alembic upgrade head
+uv run alembic upgrade head
 
 # 5. Import: start small, then everything
-python -m kiakia.cli import --limit 10
-python -m kiakia.cli import
+uv run python -m kiakia.cli import --limit 10
+uv run python -m kiakia.cli import
 
 # 6. See the results
-python -m kiakia.cli stats      # what's in the database
-python -m kiakia.cli waiting    # customers still waiting for a reply
+uv run python -m kiakia.cli stats      # what's in the database
+uv run python -m kiakia.cli waiting    # customers still waiting for a reply
 
 # 7. Tests (integration tests need step 2 running; otherwise they're skipped)
-pytest
+uv run pytest
 ```
 
 Run the import as often as you like: a second run never creates duplicates.
+
+### Quality checks
+
+```bash
+uv run ruff check .        # lint (incl. security rules)
+uv run ruff format .       # format
+uv run mypy                # strict type checking
+uv run pytest              # 33 unit + integration tests
+```
+
+The same checks run automatically on GitHub for every push and pull request
+([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ### What's in the database
 

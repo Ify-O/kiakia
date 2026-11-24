@@ -1,6 +1,7 @@
 """Unit tests for the Telegram parser. Fake data only (tests/fixtures)."""
+
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -18,8 +19,9 @@ def result():
 
 
 def by_id(result, chat_id, message_id):
-    matches = [m for m in result.messages
-               if m.external_chat_id == chat_id and m.external_message_id == message_id]
+    matches = [
+        m for m in result.messages if m.external_chat_id == chat_id and m.external_message_id == message_id
+    ]
     return matches[-1]  # the edited version comes last
 
 
@@ -43,7 +45,7 @@ def test_text_message_is_cleaned_and_in_utc(result):
     assert m.direction is Direction.IN
     assert m.kind is MessageKind.TEXT
     assert m.body == "Hello, how much is the blue bag?"
-    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=timezone.utc)
+    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=UTC)
     assert m.sender.display_name == "Ada Test"
     assert m.sender.username == "ada_test"
 
@@ -66,7 +68,7 @@ def test_photo_uses_largest_size_and_caption(result):
 def test_edited_message_has_same_key_and_new_text(result):
     m = by_id(result, "9001", "11")
     assert m.body == "Hello, how much is the blue bag in size L?"
-    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=timezone.utc)  # original time
+    assert m.sent_at == datetime.fromtimestamp(1795600000, tz=UTC)  # original time
 
 
 def test_sender_without_any_name_gets_a_fallback(result):
@@ -89,5 +91,6 @@ def test_empty_batch_has_no_cursor():
 
 def test_message_refuses_naive_datetime():
     with pytest.raises(ValueError):
-        Message(Channel.TELEGRAM, "1", "1", Direction.IN, MessageKind.TEXT,
-                datetime(2026, 1, 1), Sender("1", "x"))
+        Message(
+            Channel.TELEGRAM, "1", "1", Direction.IN, MessageKind.TEXT, datetime(2026, 1, 1), Sender("1", "x")
+        )

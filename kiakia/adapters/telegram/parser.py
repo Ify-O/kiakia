@@ -14,13 +14,12 @@ Decisions:
 - next_cursor = highest update_id + 1, counting rejected and ignored updates
   too, so one broken update can't block the queue forever.
 """
-from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Optional, Tuple
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
-from kiakia.domain.models import (Channel, Direction, FetchResult, Message, MessageKind,
-                                  Reject, Sender)
+from kiakia.domain.models import Channel, Direction, FetchResult, Message, MessageKind, Reject, Sender
 
 MESSAGE_KEYS = ("message", "edited_message")
 
@@ -40,14 +39,14 @@ class _Bad(ValueError):
     """Internal: this update can't be used (becomes a Reject)."""
 
 
-def _clean(value: Any) -> Optional[str]:
+def _clean(value: Any) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
     return text or None
 
 
-def _required(obj: Dict[str, Any], key: str, where: str) -> Any:
+def _required(obj: dict[str, Any], key: str, where: str) -> Any:
     value = obj.get(key)
     if value is None or value == "":
         raise _Bad(f"missing {where}.{key}")
@@ -56,12 +55,12 @@ def _required(obj: Dict[str, Any], key: str, where: str) -> Any:
 
 def _to_utc(unix_seconds: Any) -> datetime:
     try:
-        return datetime.fromtimestamp(int(unix_seconds), tz=timezone.utc)
+        return datetime.fromtimestamp(int(unix_seconds), tz=UTC)
     except (TypeError, ValueError, OverflowError, OSError) as exc:
         raise _Bad(f"bad date {unix_seconds!r}") from exc
 
 
-def _sender(user: Optional[Dict[str, Any]], chat: Dict[str, Any]) -> Sender:
+def _sender(user: dict[str, Any] | None, chat: dict[str, Any]) -> Sender:
     """Prefer `from`; fall back to the private chat's own name fields."""
     src = user or chat
     user_id = _clean(src.get("id")) or _clean(chat.get("id"))
@@ -71,38 +70,38 @@ def _sender(user: Optional[Dict[str, Any]], chat: Dict[str, Any]) -> Sender:
     return Sender(external_id=str(user_id), display_name=display, username=username)
 
 
-def _kind_and_media(msg: Dict[str, Any]) -> Tuple[MessageKind, Optional[str]]:
+def _kind_and_media(msg: dict[str, Any]) -> tuple[MessageKind, str | None]:
     if _clean(msg.get("text")):
         return MessageKind.TEXT, None
     for field, kind in _MEDIA_KINDS:
         media = msg.get(field)
         if not media:
             continue
-        if isinstance(media, list):        # photo = list of sizes; the last one is the largest
+        if isinstance(media, list):  # photo = list of sizes; the last one is the largest
             media = media[-1]
         file_id = _clean(media.get("file_id")) if isinstance(media, dict) else None
         return kind, file_id
     return MessageKind.OTHER, None
 
 
-def parse_update(update: Dict[str, Any]) -> Optional[Message]:
+def parse_update(update: dict[str, Any]) -> Message | None:
     """Return a Message, None if the update is deliberately ignored, or raise _Bad."""
     msg = next((update[k] for k in MESSAGE_KEYS if isinstance(update.get(k), dict)), None)
     if msg is None:
-        return None                         # not a message update (e.g. callback_query)
+        return None  # not a message update (e.g. callback_query)
 
     chat = _required(msg, "chat", "message")
     if not isinstance(chat, dict):
         raise _Bad("message.chat is not an object")
     if chat.get("type") != "private":
-        return None                         # groups/channels aren't customer chats
+        return None  # groups/channels aren't customer chats
 
     kind, media_ref = _kind_and_media(msg)
     return Message(
         channel=Channel.TELEGRAM,
         external_chat_id=str(_required(chat, "id", "chat")),
         external_message_id=str(_required(msg, "message_id", "message")),
-        direction=Direction.IN,             # getUpdates only delivers messages sent TO the bot
+        direction=Direction.IN,  # getUpdates only delivers messages sent TO the bot
         kind=kind,
         sent_at=_to_utc(_required(msg, "date", "message")),
         sender=_sender(msg.get("from"), chat),
@@ -113,7 +112,7 @@ def parse_update(update: Dict[str, Any]) -> Optional[Message]:
 
 def parse_updates(updates: Iterable[Any]) -> FetchResult:
     result = FetchResult()
-    max_update_id: Optional[int] = None
+    max_update_id: int | None = None
 
     for update in updates:
         if not isinstance(update, dict):

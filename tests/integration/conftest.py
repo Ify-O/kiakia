@@ -3,9 +3,10 @@
 Needs PostgreSQL running (docker compose up -d). If it isn't reachable,
 the integration tests are skipped instead of failing.
 """
+
 import os
 
-import psycopg2
+import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -19,12 +20,17 @@ TEST_DB = "kiakia_test"
 def test_db_settings():
     settings = load_settings(require_telegram=False)
     try:
-        admin = psycopg2.connect(host=settings.db_host, port=settings.db_port, user=settings.db_user,
-                                 password=settings.db_password, dbname=settings.db_name,
-                                 connect_timeout=3)
-    except psycopg2.OperationalError:
+        admin = psycopg.connect(
+            host=settings.db_host,
+            port=settings.db_port,
+            user=settings.db_user,
+            password=settings.db_password,
+            dbname=settings.db_name,
+            connect_timeout=3,
+            autocommit=True,
+        )
+    except psycopg.OperationalError:
         pytest.skip("PostgreSQL is not running (start it with: docker compose up -d)")
-    admin.autocommit = True
     with admin.cursor() as cur:
         cur.execute(f"DROP DATABASE IF EXISTS {TEST_DB}")
         cur.execute(f"CREATE DATABASE {TEST_DB}")
@@ -46,10 +52,18 @@ def test_db_settings():
 @pytest.fixture
 def conn(test_db_settings):
     s = test_db_settings
-    c = psycopg2.connect(host=s.db_host, port=s.db_port, user=s.db_user,
-                         password=s.db_password, dbname=TEST_DB)
-    with c, c.cursor() as cur:  # every test starts with empty tables
-        cur.execute("TRUNCATE messages, conversations, contact_identities, contacts, "
-                    "sync_cursors, import_runs RESTART IDENTITY CASCADE")
+    c = psycopg.connect(
+        host=s.db_host,
+        port=s.db_port,
+        user=s.db_user,
+        password=s.db_password,
+        dbname=TEST_DB,
+        autocommit=True,
+    )
+    with c.cursor() as cur:  # every test starts with empty tables
+        cur.execute(
+            "TRUNCATE messages, conversations, contact_identities, contacts, "
+            "sync_cursors, import_runs RESTART IDENTITY CASCADE"
+        )
     yield c
     c.close()
