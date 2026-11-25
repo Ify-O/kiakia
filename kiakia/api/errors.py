@@ -17,6 +17,7 @@ from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from kiakia.domain.errors import (
+    ConcurrentChange,
     DeliveryUnknown,
     IdempotencyConflict,
     InvalidCursor,
@@ -131,6 +132,10 @@ def install_error_handlers(app: FastAPI) -> None:
             "1 parameter is invalid.",
             [{"field": exc.field, "message": exc.message}],
         )
+
+    @app.exception_handler(ConcurrentChange)
+    async def on_concurrent_change(request: Request, exc: ConcurrentChange) -> JSONResponse:
+        return problem(request, 409, "concurrent-change", "Changed by someone else", str(exc))
 
     @app.exception_handler(IdempotencyConflict)
     async def on_idempotency_conflict(request: Request, exc: IdempotencyConflict) -> JSONResponse:

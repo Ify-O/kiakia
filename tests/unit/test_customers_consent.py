@@ -23,6 +23,7 @@ def customer(details=ConsentStatus.UNKNOWN, marketing=ConsentStatus.UNKNOWN):
     c = Customer(
         id=1,
         display_name="Ada",
+        full_name=None,
         phone=None,
         email=None,
         details_consent=details,
@@ -125,3 +126,20 @@ def test_stop_words(text):
 @pytest.mark.parametrize("text", [None, "", "please don't stop sending", "stop by the shop?", "hello"])
 def test_normal_messages_are_not_stop(text):
     assert not is_opt_out(text)
+
+
+def test_offers_need_saved_details_first():
+    store = FakeStore()
+    with pytest.raises(InvalidInput):
+        RecordConsent(store).run(1, ConsentKind.MARKETING, ConsentStatus.GRANTED)
+    assert store.changes == []
+    store = FakeStore(customer(details=ConsentStatus.GRANTED))
+    RecordConsent(store).run(1, ConsentKind.MARKETING, ConsentStatus.GRANTED)
+    assert store.detail.customer.marketing_consent is ConsentStatus.GRANTED
+
+
+def test_every_change_says_what_it_expects_the_current_status_to_be():
+    # The store refuses (ConcurrentChange) if someone changed it meanwhile: no lost updates.
+    store = FakeStore(customer(details=ConsentStatus.ASKED))
+    RecordConsent(store).run(1, ConsentKind.DETAILS, ConsentStatus.DECLINED)
+    assert store.changes[0].expected_current is ConsentStatus.ASKED

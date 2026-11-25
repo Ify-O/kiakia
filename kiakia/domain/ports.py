@@ -18,17 +18,22 @@ from .models import (
     Customer,
     CustomerDetail,
     CustomerFilter,
+    ErasureSummary,
+    ExportFormat,
+    ExportLayout,
     FeedFilter,
     FeedItem,
     FetchResult,
     IdempotencyClaim,
     InboxStats,
+    MarketingContact,
     Message,
     Period,
     Reject,
     RunStatus,
     SentMessage,
     StoredMessage,
+    Table,
     WaitingCustomer,
 )
 
@@ -168,6 +173,32 @@ class CustomerStore(Protocol):
         """Append the event and update the current status atomically. Declining/withdrawing
         details erases phone and email."""
         ...
+
+
+class CustomerEraser(Protocol):
+    def forget_customer(self, customer_id: int) -> ErasureSummary | None:
+        """Delete the customer and everything about them, and log the erasure anonymously,
+        in one transaction. None if there is no such customer."""
+        ...
+
+
+class MarketingListQuery(Protocol):
+    def marketing_list(self) -> list[MarketingContact]:
+        """Everyone with marketing AND details consent granted, oldest customer first."""
+        ...
+
+
+class PrivacyLog(Protocol):
+    def log_export(self, export_format: ExportFormat, layout: ExportLayout, rows: int) -> None:
+        """Record that an export happened (options and a count only, never personal data)."""
+        ...
+
+
+class SpreadsheetWriter(Protocol):
+    media_type: str
+    extension: str
+
+    def write(self, table: Table) -> bytes: ...
 
 
 class OptOutRecorder(Protocol):

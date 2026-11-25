@@ -30,6 +30,8 @@ from kiakia.domain.models import (
     CustomerDetailsInput,
     CustomerFilter,
     Direction,
+    ExportFormat,
+    ExportLayout,
     FeedFilter,
     Period,
 )
@@ -215,6 +217,11 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
     def get_customer(services: ServicesDep, customer_id: CustomerId) -> CustomerDetailOut:
         return CustomerDetailOut.from_detail(services.get_customer().run(customer_id))
 
+    @api.delete("/v1/customers/{customerId}", status_code=204)
+    def forget_customer(services: ServicesDep, customer_id: CustomerId) -> Response:
+        services.forget_customer().run(customer_id)
+        return Response(status_code=204)
+
     @api.post(
         "/v1/customers/{customerId}/consent", response_model=CustomerDetailOut, response_model_by_alias=True
     )
@@ -240,6 +247,22 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
             details=details,
         )
         return CustomerDetailOut.from_detail(detail)
+
+    @api.get("/v1/exports/customers", response_class=Response)
+    def export_customers(
+        services: ServicesDep,
+        format_: Annotated[ExportFormat, Query(alias="format")] = ExportFormat.CSV,
+        layout: ExportLayout = ExportLayout.STANDARD,
+    ) -> Response:
+        file = services.export_customers().run(format_, layout)
+        return Response(
+            file.content,
+            media_type=file.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{file.filename}"',
+                "Cache-Control": "no-store",  # personal data: never keep a copy in a cache
+            },
+        )
 
     @api.get("/v1/stats", response_model=InboxStatsOut, response_model_by_alias=True)
     def get_stats(services: ServicesDep, from_: From = None, to: To = None) -> InboxStatsOut:

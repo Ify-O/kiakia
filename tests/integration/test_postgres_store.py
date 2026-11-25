@@ -378,7 +378,8 @@ def test_granted_details_are_saved_and_declining_erases_them(conn):
     )
     detail = store.get_customer(ada_id)
     c = detail.customer
-    assert (c.display_name, c.phone, c.email, c.details_consent) == (
+    assert (c.display_name, c.full_name, c.phone, c.email, c.details_consent) == (
+        "Ada Test",
         "Ada Okafor",
         "+2348031234567",
         "ada@example.com",
@@ -389,12 +390,12 @@ def test_granted_details_are_saved_and_declining_erases_them(conn):
 
     store.save_messages(
         [msg("9001", 2, 1, ADA, "hi again")]
-    )  # platform name must not overwrite the saved one
-    assert store.get_customer(ada_id).customer.display_name == "Ada Okafor"
+    )  # the platform name must not overwrite the name she gave us
+    assert store.get_customer(ada_id).customer.full_name == "Ada Okafor"
 
     _consent(store, ada_id, "details", "withdrawn")
     c = store.get_customer(ada_id).customer
-    assert (c.phone, c.email, c.details_consent) == (None, None, ConsentStatus.WITHDRAWN)
+    assert (c.full_name, c.phone, c.email, c.details_consent) == (None, None, None, ConsentStatus.WITHDRAWN)
 
 
 def test_database_refuses_details_without_consent(conn):
@@ -405,6 +406,17 @@ def test_database_refuses_details_without_consent(conn):
         cur.execute("UPDATE contacts SET phone = '+2348031234567'")
 
 
+def test_database_refuses_a_given_name_or_offers_without_details_consent(conn):
+    store = PostgresStore(conn)
+    store.save_messages([msg("9001", 1, 0, ADA)])
+    for statement in (
+        "UPDATE contacts SET full_name = 'Ada Okafor'",
+        "UPDATE contacts SET marketing_consent = 'granted'",
+    ):
+        with pytest.raises(psycopg.errors.CheckViolation), conn.cursor() as cur:
+            cur.execute(statement)
+
+
 def test_stop_reply_withdraws_offers_once(conn):
     from kiakia.domain.models import ConsentStatus, CustomerFilter
 
@@ -412,6 +424,7 @@ def test_stop_reply_withdraws_offers_once(conn):
     stop = msg("9001", 2, 1, ADA, "STOP")
     store.save_messages([msg("9001", 1, 0, ADA), stop])
     ada_id = store.list_customers(CustomerFilter(), 1, None)[0].id
+    _consent(store, ada_id, "details", "granted")  # offers need saved details (ADR 0009)
     _consent(store, ada_id, "marketing", "granted")
     assert store.withdraw_marketing(stop) is True
     assert store.withdraw_marketing(stop) is False  # same STOP imported again: no duplicate event

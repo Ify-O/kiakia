@@ -18,7 +18,7 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
-from kiakia.domain.errors import StorageUnavailable
+from kiakia.domain.errors import ConcurrentChange, StorageUnavailable
 from kiakia.domain.models import (
     Category,
     Channel,
@@ -40,10 +40,14 @@ from kiakia.domain.models import (
     CustomerDetail,
     CustomerFilter,
     Direction,
+    ErasureSummary,
+    ExportFormat,
+    ExportLayout,
     FeedFilter,
     FeedItem,
     IdempotencyClaim,
     InboxStats,
+    MarketingContact,
     Message,
     MessageKind,
     Period,
@@ -224,7 +228,7 @@ IDEMPOTENCY_TTL = "24 hours"
 # ---- Customers (ADR 0007). One row per contact with what the customer list shows. ----
 _CUSTOMERS_CTE = """
 WITH cust AS (
-    SELECT ct.id, ct.display_name, ct.phone, ct.email, ct.details_consent, ct.marketing_consent,
+    SELECT ct.id, ct.display_name, ct.full_name, ct.phone, ct.email, ct.details_consent, ct.marketing_consent,
            (SELECT cv.channel FROM conversations cv WHERE cv.contact_id = ct.id
              ORDER BY cv.created_at, cv.id LIMIT 1) AS first_channel,
            (SELECT min(m.sent_at) FROM messages m JOIN conversations cv ON cv.id = m.conversation_id
@@ -243,7 +247,7 @@ WITH cust AS (
 )
 """
 _CUSTOMER_COLUMNS = """
-SELECT id, display_name, phone, email, details_consent, marketing_consent, first_channel, channels,
+SELECT id, display_name, full_name, phone, email, details_consent, marketing_consent, first_channel, channels,
        first_contact_at, last_contact_at, conversation_count, order_count
 FROM cust WHERE last_contact_at IS NOT NULL
 """
@@ -264,10 +268,14 @@ _INSERT_CONSENT_EVENT = (
 # Two fixed statements per kind: no column names are ever built from input.
 _SET_DETAILS_CONSENT = "UPDATE contacts SET details_consent = %s WHERE id = %s"
 _SET_DETAILS_GRANTED = (
-    "UPDATE contacts SET details_consent = 'granted', display_name = coalesce(%s, display_name), "
+    "UPDATE contacts SET details_consent = 'granted', full_name = coalesce(%s, full_name), "
     "phone = coalesce(%s, phone), email = coalesce(%s, email) WHERE id = %s"
 )
-_ERASE_DETAILS = "UPDATE contacts SET details_consent = %s, phone = NULL, email = NULL WHERE id = %s"
+_ERASE_DETAILS = (
+    "UPDATE contacts SET details_consent = %s, full_name = NULL, phone = NULL, email = NULL WHERE id = %s"
+)
+# Offers need contact details (ADR 0009): erasing details also ends a "yes" to offers.
+_FOLLOW_DETAILS_WITHDRAWAL = "Automatic: details consent was declined or withdrawn (ADR 0009)"
 _SET_MARKETING_CONSENT = "UPDATE contacts SET marketing_consent = %s WHERE id = %s"
 
 
@@ -275,6 +283,7 @@ def _customer(row: tuple[Any, ...]) -> Customer:
     (
         cid,
         name,
+        full_name,
         phone,
         email,
         details,
@@ -289,6 +298,7 @@ def _customer(row: tuple[Any, ...]) -> Customer:
     return Customer(
         id=cid,
         display_name=name,
+        full_name=full_name,
         phone=phone,
         email=email,
         details_consent=ConsentStatus(details),
@@ -404,10 +414,10 @@ class PostgresStore:
         row = cur.fetchone()
         if row:
             contact_id: int = row[0]
-            # Keep the latest name/username the customer uses, unless they saved their own name
-            # with consent (ADR 0007): then their chosen name wins over the platform's.
+            # Keep the latest platform name/username. A name the customer gave us lives in
+            # full_name (ADR 0009), so the two never overwrite each other.
             cur.execute(
-                "UPDATE contacts SET display_name = %s WHERE id = %s AND details_consent <> 'granted'",
+                "UPDATE contacts SET display_name = %s WHERE id = %s",
                 (_text(m.sender.display_name), contact_id),
             )
             cur.execute(
@@ -593,9 +603,12 @@ class PostgresStore:
         if filters.search:
             pattern = _like_pattern(filters.search)
             conditions.append(
-                sql.SQL("(display_name ILIKE %s OR usernames ILIKE %s OR phone ILIKE %s OR email ILIKE %s)")
+                sql.SQL(
+                    "(display_name ILIKE %s OR full_name ILIKE %s OR usernames ILIKE %s "
+                    "OR phone ILIKE %s OR email ILIKE %s)"
+                )
             )
-            params += [pattern] * 4
+            params += [pattern] * 5
         if filters.details_consent is not None:
             conditions.append(sql.SQL("details_consent = %s"))
             params.append(filters.details_consent.value)
@@ -678,8 +691,17 @@ class PostgresStore:
     def record_consent(self, change: ConsentChange) -> None:
         details = change.details
         with self._conn.transaction(), self._conn.cursor() as cur:
-            cur.execute("SELECT id FROM contacts WHERE id = %s FOR UPDATE", (change.customer_id,))
-            _one(cur)
+            cur.execute(
+                "SELECT details_consent, marketing_consent FROM contacts WHERE id = %s FOR UPDATE",
+                (change.customer_id,),
+            )
+            details_now, marketing_now = _one(cur)
+            now = details_now if change.kind is ConsentKind.DETAILS else marketing_now
+            if change.expected_current is not None and now != change.expected_current.value:
+                # Someone else recorded a change since the caller read it: don't overwrite it.
+                raise ConcurrentChange(
+                    f"The customer's consent changed to {now!r} meanwhile. Reload and try again."
+                )
             cur.execute(
                 _INSERT_CONSENT_EVENT,
                 (
@@ -704,9 +726,21 @@ class PostgresStore:
                     ),
                 )
             elif change.new_current in (ConsentStatus.DECLINED, ConsentStatus.WITHDRAWN):
-                cur.execute(
-                    _ERASE_DETAILS, (change.new_current.value, change.customer_id)
-                )  # erase phone/email
+                # Offers first: the database never allows "offers yes, details no", even mid-transaction.
+                if marketing_now == ConsentStatus.GRANTED.value:
+                    cur.execute(
+                        _INSERT_CONSENT_EVENT,
+                        (
+                            change.customer_id,
+                            "marketing",
+                            "withdrawn",
+                            None,
+                            _FOLLOW_DETAILS_WITHDRAWAL,
+                            None,
+                        ),
+                    )
+                    cur.execute(_SET_MARKETING_CONSENT, ("withdrawn", change.customer_id))
+                cur.execute(_ERASE_DETAILS, (change.new_current.value, change.customer_id))
             else:
                 cur.execute(_SET_DETAILS_CONSENT, (change.new_current.value, change.customer_id))
 
@@ -848,7 +882,64 @@ class PostgresStore:
                 raise StorageUnavailable(f"refusing to wipe {name!r}: only a demo database may be reset")
             cur.execute(
                 "TRUNCATE messages, conversations, contact_identities, contacts, sync_cursors, import_runs, "
-                "rejected_updates, idempotency_keys, consent_events RESTART IDENTITY CASCADE"
+                "rejected_updates, idempotency_keys, consent_events, privacy_log RESTART IDENTITY CASCADE"
+            )
+
+    # ---------- Customer rights and export (ADR 0009) ----------
+
+    def forget_customer(self, customer_id: int) -> ErasureSummary | None:
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute("SELECT id FROM contacts WHERE id = %s FOR UPDATE", (customer_id,))
+            if cur.fetchone() is None:
+                return None
+            cur.execute(
+                "SELECT coalesce(array_agg(DISTINCT cv.channel ORDER BY cv.channel), '{}'), "
+                "count(DISTINCT cv.id), count(m.id) FROM conversations cv "
+                "LEFT JOIN messages m ON m.conversation_id = cv.id "
+                "WHERE cv.contact_id = %s",
+                (customer_id,),
+            )
+            channels, conversations, messages = _one(cur)
+            # Messages go with their conversations (ON DELETE CASCADE); identities and consent
+            # events go with the contact. Conversations reference the contact without a cascade,
+            # so they are deleted explicitly first.
+            cur.execute("DELETE FROM conversations WHERE contact_id = %s", (customer_id,))
+            cur.execute("DELETE FROM contacts WHERE id = %s", (customer_id,))
+            summary = ErasureSummary([Channel(c) for c in channels], conversations, messages)
+            cur.execute(
+                "INSERT INTO privacy_log (action, detail) VALUES ('erasure', %s)",
+                (
+                    Jsonb(
+                        {
+                            "channels": [c.value for c in summary.channels],
+                            "conversations": conversations,
+                            "messages": messages,
+                        }
+                    ),
+                ),
+            )
+            return summary
+
+    def marketing_list(self) -> list[MarketingContact]:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                sql.SQL(
+                    _CUSTOMERS_CTE
+                    + "SELECT full_name, display_name, phone, email, first_channel, first_contact_at "
+                    "FROM cust WHERE marketing_consent = 'granted' AND details_consent = 'granted' "
+                    "AND first_contact_at IS NOT NULL ORDER BY first_contact_at, id"
+                )
+            )
+            return [
+                MarketingContact(full, display, phone, email, Channel(channel), first_at)
+                for full, display, phone, email, channel, first_at in cur.fetchall()
+            ]
+
+    def log_export(self, export_format: ExportFormat, layout: ExportLayout, rows: int) -> None:
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO privacy_log (action, detail) VALUES ('export', %s)",
+                (Jsonb({"format": export_format.value, "layout": layout.value, "rows": rows}),),
             )
 
     # ---------- HealthCheck ----------

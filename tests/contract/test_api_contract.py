@@ -461,7 +461,8 @@ def test_full_consent_flow_in_the_chat(client):
         },
     )
     body = yes.json()
-    assert (body["displayName"], body["phone"], body["email"]) == (
+    assert (body["displayName"], body["fullName"], body["phone"], body["email"]) == (
+        "Ada Test",  # the platform name stays separate from the name she gave us (ADR 0009)
         "Ada Okafor",
         "+234 803 123 4567",
         "ada@example.com",
@@ -478,7 +479,115 @@ def test_full_consent_flow_in_the_chat(client):
     again = post_json(client, path, {"kind": "marketing", "status": "declined"})  # repeat: no new event
     assert len(again.json()["consentHistory"]) == 3
     filtered = call(client, "/v1/customers", {"detailsConsent": "granted"}).json()["data"]
-    assert [c["displayName"] for c in filtered] == ["Ada Okafor"]
+    assert [c["fullName"] for c in filtered] == ["Ada Okafor"]
+
+
+# ---------- ADR 0009: withdraw, forget, export ----------
+
+
+def give_details_and_offers(client, customer_id, conv_id, details):
+    path = f"/v1/customers/{customer_id}/consent"
+    post_json(
+        client, path, {"kind": "details", "status": "granted", "conversationId": conv_id, "details": details}
+    )
+    return post_json(client, path, {"kind": "marketing", "status": "granted", "conversationId": conv_id})
+
+
+def test_withdrawing_details_erases_the_given_name_and_ends_offers(client):
+    ada_id, conv_id = ada_ids(client)
+    details = {"name": "Ada Okafor", "phone": "+234 803 123 4567", "email": "ada@example.com"}
+    assert give_details_and_offers(client, ada_id, conv_id, details).json()["marketingConsent"] == "granted"
+    body = post_json(
+        client, f"/v1/customers/{ada_id}/consent", {"kind": "details", "status": "withdrawn"}
+    ).json()
+    assert (body["fullName"], body["phone"], body["email"]) == (None, None, None)
+    assert body["displayName"] == "Ada Test"  # the platform name is still needed to reply
+    assert (body["detailsConsent"], body["marketingConsent"]) == ("withdrawn", "withdrawn")
+    assert [(e["kind"], e["status"]) for e in body["consentHistory"][-2:]] == [
+        ("details", "withdrawn"),
+        ("marketing", "withdrawn"),  # recorded as its own event, so the history explains it
+    ]
+
+
+def test_offers_need_saved_details_first(client):
+    ada_id, _ = ada_ids(client)
+    r = post_json(client, f"/v1/customers/{ada_id}/consent", {"kind": "marketing", "status": "granted"})
+    assert r.status_code == 422
+    assert r.json()["errors"][0]["field"] == "status"
+
+
+def test_forget_customer_erases_everything_once(client, conn):
+    ada_id, conv_id = ada_ids(client)
+    give_details_and_offers(client, ada_id, conv_id, {"phone": "+234 803 123 4567"})
+    assert client.delete(f"/v1/customers/{ada_id}").status_code == 204
+    assert call(client, f"/v1/customers/{ada_id}").status_code == 404
+    assert call(client, f"/v1/conversations/{conv_id}").status_code == 404
+    assert call(client, "/v1/conversations", {"q": "ada"}).json()["data"] == []
+    second = client.delete(f"/v1/customers/{ada_id}")
+    assert second.status_code == 404 and second.headers["content-type"].startswith("application/problem+json")
+    with conn.cursor() as cur:  # the privacy log proves it happened, without saying who
+        cur.execute("SELECT action, detail FROM privacy_log")
+        [(action, detail)] = cur.fetchall()
+        cur.execute("SELECT count(*) FROM messages WHERE body ILIKE '%%blue bag%%'")
+        assert cur.fetchone()[0] == 0
+    assert action == "erasure" and detail == {"channels": ["telegram"], "conversations": 1, "messages": 2}
+    assert "Ada" not in json.dumps(detail)
+
+
+def export(client, **params):
+    r = client.get("/v1/exports/customers", params=params)
+    assert r.status_code == 200, r.text
+    assert r.headers["cache-control"] == "no-store"
+    return r
+
+
+def test_export_contains_only_people_who_said_yes_to_offers(client):
+    ada_id, ada_conv = ada_ids(client)
+    give_details_and_offers(client, ada_id, ada_conv, {"name": "Ada Okafor", "phone": "0803 123 4567"})
+    bayo = call(client, "/v1/conversations", {"q": "bayo"}).json()["data"][0]
+    path = f"/v1/customers/{bayo['contact']['id']}/consent"
+    post_json(client, path, {"kind": "details", "status": "granted", "details": {"email": "b@example.com"}})
+    # Bayo saved details but never said yes to offers: he must not be in an ads list.
+    r = export(client)
+    assert r.headers["content-type"].startswith("text/csv")
+    assert 'attachment; filename="kiakia-offers-list-' in r.headers["content-disposition"]
+    lines = r.content.decode("utf-8-sig").splitlines()
+    assert lines[0] == "Name,Phone,Email,Platform,Customer since"
+    assert len(lines) == 2 and lines[1].startswith("Ada Okafor,0803 123 4567,,Telegram,")
+
+
+def test_google_ads_layout_and_formula_safety(client):
+    ada_id, ada_conv = ada_ids(client)
+    give_details_and_offers(
+        client, ada_id, ada_conv, {"name": "=HYPERLINK(evil) Okafor", "phone": "0803 123 4567"}
+    )
+    lines = export(client, layout="google-ads").content.decode("utf-8-sig").splitlines()
+    assert lines == [
+        "Email,Phone,First Name,Last Name,Country",
+        ",+2348031234567,'=HYPERLINK(evil),Okafor,NG",
+    ]
+
+
+def test_excel_export_is_a_real_workbook_with_text_cells(client):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    ada_id, ada_conv = ada_ids(client)
+    give_details_and_offers(client, ada_id, ada_conv, {"name": "=1+1", "phone": "+234 803 123 4567"})
+    r = export(client, format="xlsx")
+    assert r.headers["content-disposition"].endswith('.xlsx"')
+    sheet = load_workbook(BytesIO(r.content)).active
+    rows = [[c.value for c in row] for row in sheet.iter_rows()]
+    assert rows[0] == ["Name", "Phone", "Email", "Platform", "Customer since"]
+    assert rows[1][:2] == ["=1+1", "+234 803 123 4567"]
+    assert "f" not in {c.data_type for c in sheet[2]}  # stored as text: Excel shows it, never runs it
+
+
+def test_export_rejects_unknown_options(client):
+    for params in ({"format": "pdf"}, {"layout": "facebook"}):
+        r = client.get("/v1/exports/customers", params=params)
+        assert r.status_code == 400 and r.headers["content-type"].startswith("application/problem+json")
 
 
 def test_saying_no_saves_nothing_and_is_remembered(client):

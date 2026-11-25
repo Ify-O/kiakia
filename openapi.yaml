@@ -416,6 +416,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CustomerDetail"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1225,7 +1227,7 @@ components:
             detail: Conversation 999 does not exist.
             instance: /v1/conversations/999
     Conflict:
-      description: The `Idempotency-Key` was already used with a different request body, or the first request with it is still being processed (or its delivery is unconfirmed).
+      description: "Conflict: the `Idempotency-Key` was already used with a different request body or is still being processed, or (`concurrent-change`) someone else changed the same record since you read it."
       content:
         application/problem+json:
           schema:

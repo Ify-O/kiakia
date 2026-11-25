@@ -263,6 +263,7 @@ class CustomerChannelOut(ApiModel):
 class CustomerOut(ApiModel):
     id: int
     display_name: str
+    full_name: str | None
     phone: str | None
     email: str | None
     details_consent: ConsentStatus
@@ -279,6 +280,7 @@ class CustomerOut(ApiModel):
         return cls(
             id=c.id,
             display_name=c.display_name,
+            full_name=c.full_name,
             phone=c.phone,
             email=c.email,
             details_consent=c.details_consent,

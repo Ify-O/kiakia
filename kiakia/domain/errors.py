@@ -50,6 +50,10 @@ class IdempotencyConflict(KiakiaError):
     """The Idempotency-Key was used for a different request, or is still in progress (-> 409)."""
 
 
+class ConcurrentChange(KiakiaError):
+    """Someone else changed the same record since it was read; nothing was saved (-> 409)."""
+
+
 class ChannelNotSupported(SourceRejectedRequest):
     """Kiakia can't send messages on this conversation's channel yet (-> 502)."""
 

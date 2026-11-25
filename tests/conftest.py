@@ -63,7 +63,7 @@ def conn(test_db_settings):
     with c.cursor() as cur:  # every test starts with empty tables
         cur.execute(
             "TRUNCATE messages, conversations, contact_identities, contacts, sync_cursors, import_runs, "
-            "rejected_updates, idempotency_keys, consent_events RESTART IDENTITY CASCADE"
+            "rejected_updates, idempotency_keys, consent_events, privacy_log RESTART IDENTITY CASCADE"
         )
     yield c
     c.close()
