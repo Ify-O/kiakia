@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { api, unwrap, type Channel, type ConversationStatus } from "../api/client";
 import { ConversationRow, Empty, InlineError, Skeletons } from "../components/common";
 import { useDebounced, useNow, usePolling } from "../hooks/usePolling";
@@ -11,7 +11,15 @@ type CategoryFilter = "" | "enquiry" | "order" | "complaint" | "other" | "none";
 const TABS: [Tab, string][] = [["waiting", "⏳ Waiting"], ["answered", "↩ Answered"], ["resolved", "✓ Resolved"], ["all", "All"]];
 const PAGE = 20;
 
-export function Inbox({ selected, onSelect }: { selected: number | null; onSelect: (id: number | null) => void }) {
+export function Inbox({
+  selected,
+  onSelect,
+  drafts,
+}: {
+  selected: number | null;
+  onSelect: (id: number | null) => void;
+  drafts: Map<number, Draft>; // one draft + Idempotency-Key per conversation, kept by App (survives view switches)
+}) {
   const now = useNow();
   const [tab, setTab] = useState<Tab>("waiting");
   const [search, setSearch] = useState("");
@@ -22,7 +30,6 @@ export function Inbox({ selected, onSelect }: { selected: number | null; onSelec
   const [customTo, setCustomTo] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("");
   const [pages, setPages] = useState(1);
-  const drafts = useRef(new Map<number, Draft>()); // one draft + Idempotency-Key per conversation
 
   const filters = JSON.stringify({ tab, q, channel, preset, customFrom, customTo, category, pages });
   // The first `pages` pages are re-polled together (up to the API's max of 100), so the list stays live.
@@ -57,7 +64,7 @@ export function Inbox({ selected, onSelect }: { selected: number | null; onSelec
   return (
     <div className={`panes ${selected ? "show-chat" : ""}`}>
       <section className="card list" aria-label="Conversations">
-        <div className="tabs" role="tablist">
+        <div className="tabs" role="group" aria-label="Status">
           {TABS.map(([t, label]) => (
             <button key={t} aria-pressed={tab === t} onClick={() => { setTab(t); setPages(1); }}>
               {label} {t === "waiting" && counts.data !== undefined && <span>{counts.data}</span>}
@@ -69,12 +76,13 @@ export function Inbox({ selected, onSelect }: { selected: number | null; onSelec
             <input type="search" placeholder="Search name or @username" aria-label="Search" maxLength={100}
               value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="frow" aria-label="Filter by platform">
+          <div className="frow" role="group" aria-label="Filter by platform">
             <span className="hint">Platform:</span>
             <button className="chipbtn all" aria-pressed={channel === ""} onClick={() => setChannel("")}>All</button>
             {CHANNELS.map((ch) => (
-              <button key={ch} className="chipbtn" style={{ ["--c" as string]: `var(--${ch})` }}
-                aria-pressed={channel === "" || channel === ch} onClick={() => setChannel(channel === ch ? "" : ch)}>
+              // "pressed" only when THIS platform is the filter; with "All", the "on" class keeps every chip lit.
+              <button key={ch} className={`chipbtn ${channel === "" ? "on" : ""}`} style={{ ["--c" as string]: `var(--${ch})` }}
+                aria-pressed={channel === ch} onClick={() => setChannel(channel === ch ? "" : ch)}>
                 <PlatformIcon channel={ch} />
               </button>
             ))}
@@ -107,7 +115,7 @@ export function Inbox({ selected, onSelect }: { selected: number | null; onSelec
         </div>
         <div className="rows">
           {list.error !== undefined && !list.data ? (
-            <InlineError onRetry={list.refresh} />
+            <InlineError error={list.error} onRetry={list.refresh} />
           ) : list.loading && !list.data ? (
             <Skeletons n={5} />
           ) : rows.length === 0 ? (
@@ -127,9 +135,12 @@ export function Inbox({ selected, onSelect }: { selected: number | null; onSelec
               {rows.map((c) => (
                 <ConversationRow key={c.id} c={c} now={now} selected={c.id === selected} onOpen={onSelect} />
               ))}
-              {list.data?.page.nextCursor && PAGE * pages < 100 && (
+              {list.data?.page.nextCursor && (PAGE * pages < 100 ? (
                 <button className="more" onClick={() => setPages(pages + 1)}>Load more</button>
-              )}
+              ) : (
+                // The API returns at most 100 at once, and we re-poll them all to stay live.
+                <p className="hint" style={{ padding: "8px 12px", textAlign: "center" }}>Showing the first 100 — use search or filters to narrow down</p>
+              ))}
             </>
           )}
         </div>
@@ -140,7 +151,7 @@ export function Inbox({ selected, onSelect }: { selected: number | null; onSelec
           <ConversationPane
             key={selected}
             id={selected}
-            drafts={drafts.current}
+            drafts={drafts}
             onBack={() => onSelect(null)}
             onChanged={() => { void list.refresh(); void counts.refresh(); }}
           />

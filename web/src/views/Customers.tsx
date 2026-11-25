@@ -50,12 +50,13 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
             <input type="search" placeholder="Search name, @username, phone or email" aria-label="Search customers"
               maxLength={100} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="frow" aria-label="Filter by platform">
+          <div className="frow" role="group" aria-label="Filter by platform">
             <span className="hint">Platform:</span>
             <button className="chipbtn all" aria-pressed={channel === ""} onClick={() => setChannel("")}>All</button>
             {CHANNELS.map((ch) => (
-              <button key={ch} className="chipbtn" style={{ ["--c" as string]: `var(--${ch})` }}
-                aria-pressed={channel === "" || channel === ch} onClick={() => setChannel(channel === ch ? "" : ch)}>
+              // "pressed" only when THIS platform is the filter; with "All", the "on" class keeps every chip lit.
+              <button key={ch} className={`chipbtn ${channel === "" ? "on" : ""}`} style={{ ["--c" as string]: `var(--${ch})` }}
+                aria-pressed={channel === ch} onClick={() => setChannel(channel === ch ? "" : ch)}>
                 <PlatformIcon channel={ch} />
               </button>
             ))}
@@ -83,7 +84,7 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
         </div>
         <div className="rows">
           {list.error !== undefined && !list.data ? (
-            <InlineError onRetry={list.refresh} />
+            <InlineError error={list.error} onRetry={list.refresh} />
           ) : !list.data ? (
             <Skeletons n={5} />
           ) : rows.length === 0 ? (
@@ -147,7 +148,7 @@ function CustomerPanel({ id, onBack, onOpenChat, onForgotten }: {
     async () => unwrap(await api.GET("/v1/customers/{customerId}", { params: { path: { customerId: id } } })),
     `c${id}`,
   );
-  if (d.error !== undefined && !d.data) return <InlineError onRetry={d.refresh} />;
+  if (d.error !== undefined && !d.data) return <InlineError error={d.error} onRetry={d.refresh} />;
   const c = d.data;
   if (!c) return <Skeletons n={4} />;
   return (

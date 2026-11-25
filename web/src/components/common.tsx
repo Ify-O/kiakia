@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Conversation } from "../api/client";
+import { ApiProblem, type Conversation } from "../api/client";
 import { ago, duration, heat, since, when, type Heat } from "../lib/format";
 import { CATEGORY_LABEL, PlatformIcon, previewText } from "../lib/platforms";
 
@@ -133,10 +133,24 @@ export function Skeletons({ n = 4 }: { n?: number }) {
   );
 }
 
-export function InlineError({ onRetry }: { onRetry: () => void }) {
+/**
+ * "Couldn't load this" + Retry. If the server answered with a problem (ApiProblem), we show what it said
+ * and its HTTP status; for a network error (no answer at all) the generic text is all we know.
+ */
+export function InlineError({ error, onRetry }: { error?: unknown; onRetry: () => void }) {
+  const p = error instanceof ApiProblem ? error : undefined;
+  const title = p?.problem.title;
+  const detail = p?.problem.detail;
   return (
     <div className="inline-error" role="alert">
-      ⚠ Couldn't load this. <button onClick={onRetry}>Retry</button>
+      ⚠ Couldn't load this.
+      {p && (
+        <>
+          {" "}
+          {title ?? "Server error"} ({p.status}){detail && detail !== title ? `: ${detail}` : ""}
+        </>
+      )}{" "}
+      <button onClick={onRetry}>Retry</button>
     </div>
   );
 }

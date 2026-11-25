@@ -3,7 +3,7 @@
  * Consent comes FROM THE CUSTOMER: we send the question in the chat, then record their answer.
  * The latest customer message is stored by the API as evidence.
  */
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { api, ApiProblem, unwrap, type ConsentRecord, type ConsentStatus, type ConversationDetail } from "../api/client";
 import { useToast } from "./common";
 
@@ -23,6 +23,9 @@ export function ConsentBanner({ c, onChanged }: { c: ConversationDetail; onChang
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // One Idempotency-Key per question, kept while this banner is shown (ADR 0004). If sending worked but
+  // recording failed, pressing "Ask" again reuses the key, so the customer doesn't get the question twice.
+  const askKeys = useRef<Partial<Record<Kind, string>>>({});
   const customerId = c.contact.id;
   const first = c.contact.displayName.split(" ")[0] ?? c.contact.displayName;
   const details: ConsentStatus = c.contact.detailsConsent;
@@ -35,14 +38,16 @@ export function ConsentBanner({ c, onChanged }: { c: ConversationDetail; onChang
 
   async function ask(kind: Kind) {
     const wording = kind === "details" ? DETAILS_QUESTION : OFFERS_QUESTION;
+    const key = (askKeys.current[kind] ??= crypto.randomUUID());
     setBusy(true);
     try {
       // 1) send the question to the customer (idempotent reply), 2) record that we asked, with the wording
       unwrap(await api.POST("/v1/conversations/{conversationId}/replies", {
-        params: { path: { conversationId: c.id }, header: { "Idempotency-Key": crypto.randomUUID() } },
+        params: { path: { conversationId: c.id }, header: { "Idempotency-Key": key } },
         body: { text: wording },
       }));
       await record({ kind, status: "asked", conversationId: c.id, wording });
+      delete askKeys.current[kind]; // the whole ask worked: a later ask is a new question
       toast(`Question sent to ${first}. Record their answer when they reply.`);
       onChanged();
     } catch (err) {

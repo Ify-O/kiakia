@@ -2,6 +2,8 @@
   :root {
     --brand: #0F7B5F; --brand-ink: #ffffff; --accent: #F59E0B;
     --green: #16A34A; --amber: #D97706; --red: #DC2626;
+    /* Darker green/amber for small text on white, to reach WCAG AA contrast (4.5:1). */
+    --green-text: #15803D; --amber-text: #B45309;
     --bg: #F3F5F4; --surface: #FFFFFF; --surface-2: #F8FAF9; --line: #E3E8E6;
     --text: #111827; --muted: #6B7280; --bubble-in: #FFFFFF; --bubble-out: #DDF3EB;
     --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
@@ -13,7 +15,7 @@
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --brand: #34D399; --brand-ink: #062419; --accent: #FBBF24;
-      --green: #4ADE80; --amber: #FBBF24; --red: #F87171;
+      --green: #4ADE80; --amber: #FBBF24; --red: #F87171; --green-text: #4ADE80; --amber-text: #FBBF24;
       --bg: #070C14; --surface: #0B1220; --surface-2: #101A2B; --line: #1F2A3C;
       --text: #E5E7EB; --muted: #9CA3AF; --bubble-in: #1C2A40; --bubble-out: #0E3B2E;
       --shadow: 0 1px 2px rgba(0,0,0,.4); --tiktok: #E5E7EB; color-scheme: dark;
@@ -21,7 +23,7 @@
   }
   :root[data-theme="dark"] {
     --brand: #34D399; --brand-ink: #062419; --accent: #FBBF24;
-    --green: #4ADE80; --amber: #FBBF24; --red: #F87171;
+    --green: #4ADE80; --amber: #FBBF24; --red: #F87171; --green-text: #4ADE80; --amber-text: #FBBF24;
     --bg: #070C14; --surface: #0B1220; --surface-2: #101A2B; --line: #1F2A3C;
     --text: #E5E7EB; --muted: #9CA3AF; --bubble-in: #1C2A40; --bubble-out: #0E3B2E;
     --shadow: 0 1px 2px rgba(0,0,0,.4); --tiktok: #E5E7EB; color-scheme: dark;
@@ -111,7 +113,7 @@
   .filters input, .filters select { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
   .filters input[type=search] { flex: 1; min-width: 0; }
   .chipbtn { border: 2px solid transparent; background: none; padding: 0; border-radius: 50%; opacity: .35; }
-  .chipbtn[aria-pressed="true"] { opacity: 1; border-color: var(--c); }
+  .chipbtn[aria-pressed="true"], .chipbtn.on { opacity: 1; border-color: var(--c); }
   .rows { overflow-y: auto; flex: 1; }
   .row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px;
     border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; width: 100%; }
@@ -120,7 +122,7 @@
   .name small { color: var(--muted); font-weight: 400; }
   .preview { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
   .when { font-size: 12.5px; margin-top: 2px; }
-  .when.g { color: var(--green); } .when.a { color: var(--amber); } .when.r { color: var(--red); font-weight: 600; } .when.done { color: var(--muted); }
+  .when.g { color: var(--green-text); } .when.a { color: var(--amber-text); } .when.r { color: var(--red); font-weight: 600; } .when.done { color: var(--muted); }
   .side { text-align: right; font-size: 12px; color: var(--muted); }
   .badge { display: inline-block; background: var(--red); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; }
   .catTag { display: inline-block; font-size: 11px; border-radius: 6px; padding: 0 6px; background: var(--surface-2); border: 1px solid var(--line); margin-top: 3px; }

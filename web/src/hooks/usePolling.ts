@@ -45,7 +45,17 @@ export function usePolling<T>(load: () => Promise<T>, key: string, intervalMs = 
     };
   }, [key, intervalMs, refresh]);
 
-  return { data, error, loading, updatedAt, refresh, setData };
+  // Used after a change (e.g. a PATCH) to show the server's new answer right away.
+  // Bumping `seq` makes any GET that was already in flight ignore its (older) answer,
+  // so a slow poll can't put the old data back on screen.
+  const set = useCallback((value: T) => {
+    seq.current++;
+    setData(value);
+    setError(undefined);
+    setLoading(false); // the ignored GET won't clear it any more
+  }, []);
+
+  return { data, error, loading, updatedAt, refresh, setData: set };
 }
 
 /** Re-render every second, for ticking timers ("Received 12 min ago"). */

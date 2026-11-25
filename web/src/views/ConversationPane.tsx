@@ -43,6 +43,7 @@ export function ConversationPane({
   const [notice, setNotice] = useState<{ kind: "warn" | "bad"; msg: string; offerNewKey?: boolean } | null>(null);
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   if (detail.error instanceof ApiProblem && detail.error.status === 404) {
     return (
@@ -53,7 +54,7 @@ export function ConversationPane({
       </Empty>
     );
   }
-  if (detail.error !== undefined && !detail.data) return <InlineError onRetry={detail.refresh} />;
+  if (detail.error !== undefined && !detail.data) return <InlineError error={detail.error} onRetry={detail.refresh} />;
   const c = detail.data;
   if (!c) return <Skeletons n={4} />;
 
@@ -64,12 +65,19 @@ export function ConversationPane({
   const shown = [...(msgs.data?.data ?? []), ...older].filter((m) => !seen.has(m.id) && seen.add(m.id)).reverse();
 
   async function loadOlder() {
-    if (!cursor) return;
-    const page = unwrap(await api.GET("/v1/conversations/{conversationId}/messages", {
-      params: { path: { conversationId: id }, query: { limit: 50, cursor } },
-    }));
-    setOlder((o) => [...o, ...page.data]);
-    setOlderCursor(page.page.nextCursor);
+    if (!cursor || loadingOlder) return;
+    setLoadingOlder(true); // disables the button, so a double click can't load the same page twice
+    try {
+      const page = unwrap(await api.GET("/v1/conversations/{conversationId}/messages", {
+        params: { path: { conversationId: id }, query: { limit: 50, cursor } },
+      }));
+      setOlder((o) => [...o, ...page.data]);
+      setOlderCursor(page.page.nextCursor);
+    } catch (err) {
+      toast(err instanceof ApiProblem ? `Couldn't load older messages: ${err.message}` : "Couldn't reach Kiakia. Try again.");
+    } finally {
+      setLoadingOlder(false);
+    }
   }
 
   async function patch(body: { resolved?: boolean; category?: Category | null }, success: string) {
@@ -81,7 +89,7 @@ export function ConversationPane({
       detail.setData(updated);
       toast(success);
       onChanged();
-      if (updated.status !== "waiting") await celebrateIfAllDone();
+      if (updated.status !== "waiting") celebrateIfAllDone();
     } catch (err) {
       toast(err instanceof ApiProblem ? `Couldn't save: ${err.message}` : "Couldn't reach Kiakia. Try again.");
     } finally {
@@ -89,12 +97,19 @@ export function ConversationPane({
     }
   }
 
-  async function celebrateIfAllDone() {
-    const waiting = unwrap(await api.GET("/v1/conversations", { params: { query: { status: "waiting", limit: 1 } } }));
-    if (waiting.data.length === 0) {
-      celebrate();
-      toast("🎉 Nobody is waiting. Every customer has a reply!");
-    }
+  /**
+   * Confetti if nobody is waiting any more. It's a bonus, so it runs on its own ("fire and forget"):
+   * if its check fails, we ignore that, and the save/send that already worked is never reported as failed.
+   */
+  function celebrateIfAllDone() {
+    api.GET("/v1/conversations", { params: { query: { status: "waiting", limit: 1 } } })
+      .then((result) => {
+        if (unwrap(result).data.length === 0) {
+          celebrate();
+          toast("🎉 Nobody is waiting. Every customer has a reply!");
+        }
+      })
+      .catch(() => {});
   }
 
   function updateText(v: string) {
@@ -128,7 +143,7 @@ export function ConversationPane({
       void detail.refresh();
       void msgs.refresh();
       onChanged();
-      await celebrateIfAllDone();
+      celebrateIfAllDone();
     } catch (err) {
       if (err instanceof ApiProblem) {
         const fe = err.fieldError("text");
@@ -211,8 +226,12 @@ export function ConversationPane({
         }}
       />
       <div className="bubbles">
-        {cursor && <button className="more" onClick={() => void loadOlder()}>Load older messages</button>}
-        {msgs.error !== undefined && !msgs.data && <InlineError onRetry={msgs.refresh} />}
+        {cursor && (
+          <button className="more" disabled={loadingOlder} onClick={() => void loadOlder()}>
+            {loadingOlder ? "Loading…" : "Load older messages"}
+          </button>
+        )}
+        {msgs.error !== undefined && !msgs.data && <InlineError error={msgs.error} onRetry={msgs.refresh} />}
         {shown.map((m) => (
           <div key={m.id} className={`bubble ${m.direction}`}>
             {m.body}

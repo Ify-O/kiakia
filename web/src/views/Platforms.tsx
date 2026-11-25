@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, unwrap, type Channel, type FeedItem } from "../api/client";
-import { Empty, InlineError, Skeletons } from "../components/common";
+import { api, ApiProblem, unwrap, type Channel, type FeedItem } from "../api/client";
+import { Empty, InlineError, Skeletons, useToast } from "../components/common";
 import { usePolling } from "../hooks/usePolling";
 import { percent, plural, presetRange, when } from "../lib/format";
 import { CHANNELS, KIND_LABEL, PLATFORMS, PlatformIcon } from "../lib/platforms";
@@ -20,6 +20,8 @@ export function Platforms({
   const [period, setPeriod] = useState<Period>("7d");
   const [extra, setExtra] = useState<FeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const toast = useToast();
   const range = presetRange(period);
   const key = `${period}:${channel ?? "all"}`;
 
@@ -39,12 +41,19 @@ export function Platforms({
 
   const next = cursor === undefined ? feed.data?.page.nextCursor : cursor;
   async function loadMore() {
-    if (!next) return;
-    const page = unwrap(await api.GET("/v1/messages", {
-      params: { query: { limit: 30, cursor: next, ...range, ...(channel ? { channel } : {}) } },
-    }));
-    setExtra((x) => [...x, ...page.data]);
-    setCursor(page.page.nextCursor);
+    if (!next || loadingMore) return;
+    setLoadingMore(true); // disables the button, so a double click can't load the same page twice
+    try {
+      const page = unwrap(await api.GET("/v1/messages", {
+        params: { query: { limit: 30, cursor: next, ...range, ...(channel ? { channel } : {}) } },
+      }));
+      setExtra((x) => [...x, ...page.data]);
+      setCursor(page.page.nextCursor);
+    } catch (err) {
+      toast(err instanceof ApiProblem ? `Couldn't load more: ${err.message}` : "Couldn't reach Kiakia. Try again.");
+    } finally {
+      setLoadingMore(false);
+    }
   }
   const seen = new Set<number>();
   const items = [...(feed.data?.data ?? []), ...extra].filter((f) => !seen.has(f.message.id) && seen.add(f.message.id));
@@ -84,7 +93,7 @@ export function Platforms({
           </h3>
         </div>
         {feed.error !== undefined && !feed.data ? (
-          <InlineError onRetry={feed.refresh} />
+          <InlineError error={feed.error} onRetry={feed.refresh} />
         ) : !feed.data ? (
           <Skeletons n={5} />
         ) : items.length === 0 ? (
@@ -101,7 +110,11 @@ export function Platforms({
                 <span className="side">{when(m.sentAt)}</span>
               </button>
             ))}
-            {next && <button className="more" onClick={() => void loadMore()}>Load more</button>}
+            {next && (
+              <button className="more" disabled={loadingMore} onClick={() => void loadMore()}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
           </>
         )}
       </div>
