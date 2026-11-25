@@ -207,3 +207,11 @@ def test_telegram_sender_returns_message_id_and_utc_time():
     sent = TelegramSender(TelegramClient("123:ABC", http=http)).send_text("9001", "Hello")
     assert sent.external_message_id == "77" and sent.sent_at.tzinfo is not None
     assert session.calls[0]["params"] == {"chat_id": "9001", "text": "Hello"}
+
+
+def test_long_polling_asks_telegram_to_wait_but_never_longer_than_the_read_timeout():
+    http, session, _ = make_client([response(200, {"ok": True, "result": []})] * 2)
+    client = TelegramClient("123:ABC", http=http)
+    client.get_updates(offset=None, wait_seconds=25)
+    client.get_updates(offset=None, wait_seconds=999)
+    assert [c["params"]["timeout"] for c in session.calls] == [25, 25]

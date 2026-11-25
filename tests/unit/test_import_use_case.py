@@ -152,3 +152,12 @@ def test_rejects_are_kept_before_the_cursor_moves():
     use_case(source, store).run()
     assert store.rejected == [bad]
     assert store.log == ["save_messages", "save_rejects", "set_cursor"]
+
+
+def test_quiet_mode_does_not_log_empty_runs_but_logs_real_ones():
+    empty = FakeStore()
+    use_case(FakeSource([]), empty).run(record_empty=False)
+    assert empty.runs == []  # nothing arrived: no import_runs row
+    busy = FakeStore()
+    use_case(FakeSource([FetchResult(messages=[message(1)], next_cursor="2")]), busy).run(record_empty=False)
+    assert len(busy.runs) == 1 and busy.runs[0]["status"] is RunStatus.SUCCEEDED

@@ -41,11 +41,11 @@ class Services:
     settings: Settings
     senders: Mapping[Channel, MessageSender] = field(default_factory=dict)
 
-    def import_messages(self) -> ImportMessages:
+    def import_messages(self, wait_seconds: int = 0) -> ImportMessages:
         token = self.settings.telegram_bot_token.get_secret_value()
         if not token:
             raise ConfigError("Missing setting TELEGRAM_BOT_TOKEN. Copy .env.example to .env and fill it in.")
-        source = TelegramSource(TelegramClient(token))
+        source = TelegramSource(TelegramClient(token), wait_seconds=wait_seconds)
         return ImportMessages(
             source=source,
             messages=self.store,
