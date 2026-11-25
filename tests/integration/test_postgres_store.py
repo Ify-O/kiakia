@@ -8,6 +8,7 @@ import pytest
 
 from kiakia.adapters.postgres.repository import PostgresStore
 from kiakia.domain.models import Channel, Direction, Message, MessageKind, Period, Reject, RunStatus, Sender
+from tests.conftest import TEST_DB
 
 pytestmark = pytest.mark.integration
 
@@ -446,3 +447,16 @@ def test_conversation_evidence_only_for_own_conversations(conn):
     channel, evidence = store.conversation_evidence(ada.id, _conversation_id(conn, "9001"))
     assert channel is Channel.TELEGRAM and evidence is not None
     assert store.conversation_evidence(ada.id, _conversation_id(conn, "9002")) is None  # Bayo's chat
+
+
+def test_a_lost_connection_becomes_storage_unavailable(test_db_settings):
+    # Review finding H3/M1: the API answers 503 and the watcher reconnects, instead of crashing.
+    from kiakia.adapters.postgres.repository import connect
+    from kiakia.domain.errors import StorageUnavailable
+
+    s = test_db_settings
+    conn = connect(s.db_host, s.db_port, s.db_user, s.db_password.get_secret_value(), TEST_DB)
+    store = PostgresStore(conn)
+    conn.close()  # like the database restarting under us
+    with pytest.raises(StorageUnavailable, match="get_customer"):
+        store.get_customer(1)

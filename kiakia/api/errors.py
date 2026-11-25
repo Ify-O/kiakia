@@ -177,6 +177,7 @@ def install_error_handlers(app: FastAPI) -> None:
             "service-unavailable",
             "Service temporarily unavailable",
             "The database is not reachable.",
+            headers={"Retry-After": "5"},  # tells clients when it's worth trying again
         )
 
     @app.exception_handler(StarletteHTTPException)

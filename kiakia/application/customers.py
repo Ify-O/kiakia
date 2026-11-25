@@ -25,7 +25,9 @@ from kiakia.domain.ports import CustomerStore
 
 from .pagination import decode_cursor, encode_cursor
 
-OPT_OUT_WORDS = {"stop", "unsubscribe", "stop all", "opt out", "optout", "cancel"}
+# Not "cancel": customers write "cancel" about an ORDER, and silently dropping them from offers
+# would be a surprise (review finding L1).
+OPT_OUT_WORDS = {"stop", "unsubscribe", "stop all", "opt out", "optout"}
 
 
 def is_opt_out(text: str | None) -> bool:

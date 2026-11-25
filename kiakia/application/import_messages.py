@@ -105,7 +105,9 @@ class ImportMessages:
                     seen=summary.seen,
                     saved=summary.saved,
                     bad=summary.bad,
-                    error=f"{type(exc).__name__}: {exc}"[:500],
+                    # Only the first line: database errors can add a DETAIL line with row values
+                    # (customer data), which must never end up in a log table (review finding L4).
+                    error=f"{type(exc).__name__}: {(str(exc).splitlines() or [''])[0]}"[:300],
                 )
             except Exception as log_exc:
                 log.error("Could not record failed run %s: %s", run_id, log_exc)

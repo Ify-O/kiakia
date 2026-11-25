@@ -2,15 +2,16 @@
 
 Each cycle runs ImportMessages with long polling, so it waits quietly until a message
 arrives. If the channel or the database has a problem, it waits a little (5 s, 10 s,
-20 s … up to 60 s) and tries again, instead of crashing. A bad token stops it, because
-retrying can't fix that.
+20 s … up to 60 s) and tries again, instead of crashing. After a database problem it also
+asks for a fresh connection (`reconnect`), because the old one is dead. A bad token stops
+it, because retrying can't fix that.
 """
 
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from kiakia.domain.errors import KiakiaError, SourceRejectedRequest
+from kiakia.domain.errors import KiakiaError, SourceRejectedRequest, StorageUnavailable
 
 from .import_messages import ImportMessages
 
@@ -31,8 +32,10 @@ class WatchMessages:
         sleep: Callable[[float], None],
         base_backoff: float = 5.0,
         max_backoff: float = 60.0,
+        reconnect: Callable[[], ImportMessages] | None = None,
     ):
         self.importer = importer
+        self.reconnect = reconnect
         self.sleep = sleep
         self.base_backoff = base_backoff
         self.max_backoff = max_backoff
@@ -59,6 +62,11 @@ class WatchMessages:
                 delay = min(self.max_backoff, self.base_backoff * 2 ** (failures - 1))
                 log.warning("Import problem (%s); retrying in %.0f s", exc, delay)
                 self.sleep(delay)
+                if isinstance(exc, StorageUnavailable) and self.reconnect is not None:
+                    try:
+                        self.importer = self.reconnect()  # the old connection is dead
+                    except KiakiaError as again:
+                        log.warning("Database still unavailable (%s)", again)
                 continue
             failures = 0
             if summary.saved:

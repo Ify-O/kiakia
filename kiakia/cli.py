@@ -14,8 +14,10 @@ import argparse
 import logging
 import sys
 import time
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 
+from kiakia.application.import_messages import ImportMessages
 from kiakia.application.watch import WatchMessages
 from kiakia.bootstrap import app
 from kiakia.config import ConfigError, load_settings
@@ -46,12 +48,19 @@ def cmd_watch(args: argparse.Namespace) -> None:
     """Keep importing new messages live (long polling). Stop with Ctrl+C."""
     settings = load_settings()
     print("👀 Watching Telegram for new messages (Ctrl+C to stop)…", flush=True)
-    try:
-        with app(settings) as services:
-            watcher = WatchMessages(services.import_messages(wait_seconds=25), sleep=time.sleep)
+    with ExitStack() as connection:
+
+        def fresh_importer() -> ImportMessages:
+            """Close the old (maybe dead) database connection and open a new one."""
+            connection.close()
+            services = connection.enter_context(app(settings))
+            return services.import_messages(wait_seconds=25)
+
+        try:
+            watcher = WatchMessages(fresh_importer(), sleep=time.sleep, reconnect=fresh_importer)
             watcher.run(on_saved=lambda n: print(f"📩 {n} new message(s) saved", flush=True))
-    except KeyboardInterrupt:
-        print("\nStopped watching.")
+        except KeyboardInterrupt:
+            print("\nStopped watching.")
 
 
 def cmd_seed_demo(args: argparse.Namespace) -> None:

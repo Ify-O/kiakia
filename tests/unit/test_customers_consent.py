@@ -123,7 +123,9 @@ def test_stop_words(text):
     assert is_opt_out(text)
 
 
-@pytest.mark.parametrize("text", [None, "", "please don't stop sending", "stop by the shop?", "hello"])
+@pytest.mark.parametrize(
+    "text", [None, "", "please don't stop sending", "stop by the shop?", "hello", "Cancel"]
+)
 def test_normal_messages_are_not_stop(text):
     assert not is_opt_out(text)
 

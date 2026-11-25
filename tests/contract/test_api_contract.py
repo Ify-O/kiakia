@@ -681,3 +681,21 @@ def test_whole_number_floats_are_integers(client):
         {"kind": "details", "status": "asked", "conversationId": float(conv_id)},
     )
     assert r.status_code == 200
+
+
+def test_requests_for_other_hosts_are_refused(client):
+    # DNS rebinding protection: a web page pretending to be another site can't read customer data.
+    r = client.get("/v1/customers", headers={"Host": "evil.example"})
+    assert r.status_code == 400
+
+
+def test_database_outage_is_503_with_retry_after(client, monkeypatch):
+    from kiakia.adapters.postgres.repository import PostgresStore
+    from kiakia.domain.errors import StorageUnavailable
+
+    def down(self, *args, **kwargs):
+        raise StorageUnavailable("connection lost")
+
+    monkeypatch.setattr(PostgresStore, "list_customers", down)
+    r = call(client, "/v1/customers")
+    assert r.status_code == 503 and r.headers["retry-after"] == "5"

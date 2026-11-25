@@ -10,6 +10,7 @@ Uses psycopg 3, the current PostgreSQL driver for Python.
   is wrapped in an explicit `with conn.transaction():` block.
 """
 
+import functools
 import json
 from datetime import datetime
 from typing import Any
@@ -69,11 +70,34 @@ def connect(host: str, port: int, user: str, password: str, dbname: str) -> psyc
             dbname=dbname,
             connect_timeout=5,
             autocommit=True,
+            # No single query may hang a request or the watcher for ever (review finding M4).
+            options="-c statement_timeout=10000",
         )
     except psycopg.OperationalError as exc:
         # Keep the message short: it can contain host/port but never the password.
         first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise StorageUnavailable(f"cannot connect to PostgreSQL at {host}:{port}: {first_line}") from exc
+
+
+def _connection_errors_are_storage_unavailable[T](cls: type[T]) -> type[T]:
+    """Wrap every public method so a LOST CONNECTION (database restarted, network gone) raises
+    our StorageUnavailable instead of a raw psycopg error. The API then answers 503 ("try again"),
+    and the watcher knows to reconnect (review findings H3, M1).
+    Other database errors (e.g. a CHECK constraint) are bugs, so they stay as they are (-> 500)."""
+    for name, method in list(vars(cls).items()):
+        if name.startswith("_") or not callable(method):
+            continue
+
+        def wrapped(*args: Any, __method: Any = method, __name: str = name, **kwargs: Any) -> Any:
+            try:
+                return __method(*args, **kwargs)
+            except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                first_line = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+                raise StorageUnavailable(f"database connection problem in {__name}: {first_line}") from exc
+
+        functools.update_wrapper(wrapped, method)
+        setattr(cls, name, wrapped)
+    return cls
 
 
 def _json_dumps(obj: Any) -> str:
@@ -385,6 +409,7 @@ def _like_pattern(text: str) -> str:
     return f"%{escaped}%"
 
 
+@_connection_errors_are_storage_unavailable
 class PostgresStore:
     def __init__(self, conn: psycopg.Connection):
         self._conn = conn

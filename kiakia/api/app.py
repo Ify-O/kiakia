@@ -15,8 +15,9 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from fastapi import Depends, FastAPI, Header, Path, Query, Response
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from kiakia.bootstrap import Services
+from kiakia.bootstrap import Services, default_senders
 from kiakia.bootstrap import app as services_for
 from kiakia.config import Settings, load_settings
 from kiakia.domain.errors import InvalidInput, InvalidQuery
@@ -92,8 +93,15 @@ def load_contract() -> dict[str, Any]:
 
 
 def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | None = None) -> FastAPI:
-    api = FastAPI(title="Kiakia API", version="1.0.0")
     contract = load_contract()
+    api = FastAPI(title="Kiakia API", version=str(contract["info"]["version"]))
+    # The API has no logins yet and holds customer data, so only answer requests addressed to this
+    # computer. That blocks "DNS rebinding", where a web page tricks your browser into calling
+    # localhost (review finding M6). "testserver" is the name used by the automated tests.
+    api.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
+    # Build the senders ONCE, so the HTTP client and its rate limiting are shared by all
+    # requests instead of being created again for every reply (review finding M5).
+    senders = senders if senders is not None else default_senders(settings)
     api.openapi = lambda: contract  # type: ignore[method-assign]  # /docs shows OUR contract
     install_error_handlers(api)
 
