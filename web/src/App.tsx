@@ -79,6 +79,11 @@ export function App() {
         </div>
         <ThemeToggle />
       </header>
+      {health.data?.demoMode && (
+        <div className="demo-ribbon" role="note">
+          🎬 <b>Demo data</b>: these customers are fake, and replies are not sent to anyone (ADR 0008).
+        </div>
+      )}
       <nav className="views" aria-label="Views">
         {([["dash", "📊 Dashboard"], ["inbox", "📥 Inbox"], ["customers", "👥 Customers"], ["platforms", "📡 By platform"]] as const).map(([v, label]) => (
           <button key={v} aria-current={view === v ? "page" : "false"} onClick={() => setView(v)}>{label}</button>
