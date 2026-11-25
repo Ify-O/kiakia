@@ -15,8 +15,9 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from fastapi import Depends, FastAPI, Header, Path, Query, Response
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from kiakia.bootstrap import Services
+from kiakia.bootstrap import Services, default_senders
 from kiakia.bootstrap import app as services_for
 from kiakia.config import Settings, load_settings
 from kiakia.domain.errors import InvalidInput, InvalidQuery
@@ -30,6 +31,8 @@ from kiakia.domain.models import (
     CustomerDetailsInput,
     CustomerFilter,
     Direction,
+    ExportFormat,
+    ExportLayout,
     FeedFilter,
     Period,
 )
@@ -90,8 +93,15 @@ def load_contract() -> dict[str, Any]:
 
 
 def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | None = None) -> FastAPI:
-    api = FastAPI(title="Kiakia API", version="1.0.0")
     contract = load_contract()
+    api = FastAPI(title="Kiakia API", version=str(contract["info"]["version"]))
+    # The API has no logins yet and holds customer data, so only answer requests addressed to this
+    # computer. That blocks "DNS rebinding", where a web page tricks your browser into calling
+    # localhost (review finding M6). "testserver" is the name used by the automated tests.
+    api.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
+    # Build the senders ONCE, so the HTTP client and its rate limiting are shared by all
+    # requests instead of being created again for every reply (review finding M5).
+    senders = senders if senders is not None else default_senders(settings)
     api.openapi = lambda: contract  # type: ignore[method-assign]  # /docs shows OUR contract
     install_error_handlers(api)
 
@@ -215,6 +225,11 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
     def get_customer(services: ServicesDep, customer_id: CustomerId) -> CustomerDetailOut:
         return CustomerDetailOut.from_detail(services.get_customer().run(customer_id))
 
+    @api.delete("/v1/customers/{customerId}", status_code=204)
+    def forget_customer(services: ServicesDep, customer_id: CustomerId) -> Response:
+        services.forget_customer().run(customer_id)
+        return Response(status_code=204)
+
     @api.post(
         "/v1/customers/{customerId}/consent", response_model=CustomerDetailOut, response_model_by_alias=True
     )
@@ -240,6 +255,22 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
             details=details,
         )
         return CustomerDetailOut.from_detail(detail)
+
+    @api.get("/v1/exports/customers", response_class=Response)
+    def export_customers(
+        services: ServicesDep,
+        format_: Annotated[ExportFormat, Query(alias="format")] = ExportFormat.CSV,
+        layout: ExportLayout = ExportLayout.STANDARD,
+    ) -> Response:
+        file = services.export_customers().run(format_, layout)
+        return Response(
+            file.content,
+            media_type=file.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{file.filename}"',
+                "Cache-Control": "no-store",  # personal data: never keep a copy in a cache
+            },
+        )
 
     @api.get("/v1/stats", response_model=InboxStatsOut, response_model_by_alias=True)
     def get_stats(services: ServicesDep, from_: From = None, to: To = None) -> InboxStatsOut:

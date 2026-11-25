@@ -25,7 +25,9 @@ from kiakia.domain.ports import CustomerStore
 
 from .pagination import decode_cursor, encode_cursor
 
-OPT_OUT_WORDS = {"stop", "unsubscribe", "stop all", "opt out", "optout", "cancel"}
+# Not "cancel": customers write "cancel" about an ORDER, and silently dropping them from offers
+# would be a surprise (review finding L1).
+OPT_OUT_WORDS = {"stop", "unsubscribe", "stop all", "opt out", "optout"}
 
 
 def is_opt_out(text: str | None) -> bool:
@@ -104,6 +106,12 @@ class RecordConsent:
             return current  # nothing changes: safe to repeat
         # Asking again must never undo a "granted" (and so never erase saved details).
         new_current = now if (status is ConsentStatus.ASKED and now is ConsentStatus.GRANTED) else status
+        if (
+            kind is ConsentKind.MARKETING
+            and new_current is ConsentStatus.GRANTED
+            and current.customer.details_consent is not ConsentStatus.GRANTED
+        ):
+            raise InvalidInput("status", "offers need saved details: record a YES to saving details first")
 
         self.store.record_consent(
             ConsentChange(
@@ -115,6 +123,7 @@ class RecordConsent:
                 wording=wording,
                 evidence_message_id=evidence,
                 details=details,
+                expected_current=now,  # refuse if someone changed it meanwhile (no lost updates)
             )
         )
         updated = self.store.get_customer(customer_id)

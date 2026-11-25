@@ -50,6 +50,12 @@ export function unwrap<T>(result: { data?: T; error?: unknown; response: Respons
   throw new ApiProblem(result.response.status, (result.error ?? {}) as Partial<Problem>);
 }
 
+/** For responses with no body (e.g. 204 No Content): succeeds on any 2xx, else throws ApiProblem. */
+export function ensureOk(result: { error?: unknown; response: Response }): void {
+  if (result.response.ok) return;
+  throw new ApiProblem(result.response.status, (result.error ?? {}) as Partial<Problem>);
+}
+
 /** True when the API itself can't be reached or is down (show the "can't reach Kiakia" banner). */
 export function isOutage(err: unknown): boolean {
   return err instanceof TypeError || (err instanceof ApiProblem && (err.status === 503 || err.status === 500));

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { api, isOutage, unwrap, type Channel } from "./api/client";
 import { ThemeToggle, useToast } from "./components/common";
-import { usePolling } from "./hooks/usePolling";
+import { useNow, usePolling } from "./hooks/usePolling";
 import { PLATFORMS } from "./lib/platforms";
 import { Customers } from "./views/Customers";
 import { Dashboard } from "./views/Dashboard";
+import type { Draft } from "./views/ConversationPane";
 import { Inbox } from "./views/Inbox";
 import { Platforms } from "./views/Platforms";
 
@@ -17,6 +18,9 @@ export function App() {
   // Health drives the "● Live" dot and the "can't reach Kiakia" banner (an error state from the design).
   const health = usePolling(async () => unwrap(await api.GET("/health")), "health");
   const toast = useToast();
+  // Reply drafts + their Idempotency-Keys live HERE, above the view switch: Inbox unmounts when you
+  // open another view, and losing a "maybe delivered" draft's key could send the reply twice (ADR 0004).
+  const drafts = useRef(new Map<number, Draft>());
 
   // 🆕 New-customer alert (ADR 0007): a waiting chat we haven't seen before, from someone never asked.
   const seen = useRef<Set<number> | null>(null);
@@ -40,12 +44,6 @@ export function App() {
     }
   }, [waiting.data, toast]);
   const down = health.error !== undefined && isOutage(health.error);
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = window.setInterval(() => tick((n) => n + 1), 1000);
-    return () => window.clearInterval(t);
-  }, []);
-  const secs = health.updatedAt ? Math.round((Date.now() - health.updatedAt) / 1000) : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -73,9 +71,11 @@ export function App() {
         <div className="logo">Kiakia<span>⚡</span></div>
         <div className="tag">Every customer, answered fast</div>
         <div className="spacer" />
-        <div className="live" aria-live="polite">
+        <div className="live">
           <span className={`dot ${down ? "off" : ""}`} />
-          <span>{down ? "Offline" : secs === null ? "Connecting…" : `Live · updated ${secs < 2 ? "just now" : `${secs}s ago`}`}</span>
+          {/* Only the online/offline state is announced to screen readers, not the ticking seconds. */}
+          <span aria-live="polite">{down ? "Offline" : health.updatedAt === undefined ? "Connecting…" : "Live"}</span>
+          {!down && health.updatedAt !== undefined && <UpdatedAgo at={health.updatedAt} />}
         </div>
         <ThemeToggle />
       </header>
@@ -99,9 +99,16 @@ export function App() {
         <Dashboard onOpen={open} onInbox={() => setView("inbox")}
           onPlatforms={(ch) => { setPlatform(ch ?? null); setView("platforms"); }} />
       )}
-      {view === "inbox" && <Inbox selected={selected} onSelect={setSelected} />}
+      {view === "inbox" && <Inbox selected={selected} onSelect={setSelected} drafts={drafts.current} />}
       {view === "platforms" && <Platforms channel={platform} onChannel={setPlatform} onOpen={open} />}
       {view === "customers" && <Customers onOpenChat={open} />}
     </div>
   );
+}
+
+/** "· updated 5s ago". Its own small component, so the 1-second tick only re-renders this label, not all of App. */
+function UpdatedAgo({ at }: { at: number }) {
+  const now = useNow();
+  const secs = Math.round((now - at) / 1000);
+  return <span>· updated {secs < 2 ? "just now" : `${secs}s ago`}</span>;
 }

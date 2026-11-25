@@ -30,7 +30,11 @@ def telegram_retry_after(resp: requests.Response) -> float | None:
 
 def telegram_error_detail(resp: requests.Response) -> str | None:
     """Telegram explains refusals in the body, e.g. "Forbidden: bot was blocked by the user"."""
-    description = resp.json().get("description")
+    try:
+        body = resp.json()
+    except ValueError:  # not JSON at all (e.g. an HTML error page from a proxy)
+        return None
+    description = body.get("description") if isinstance(body, dict) else None
     return str(description) if description else None
 
 

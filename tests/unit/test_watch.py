@@ -51,3 +51,26 @@ def test_backoff_is_capped():
     sleeps = []
     WatchMessages(importer, sleep=sleeps.append, max_backoff=30).run(max_cycles=6)
     assert sleeps[-1] == 30
+
+
+def test_after_a_database_problem_it_reconnects():
+    dead = FakeImporter([StorageUnavailable("connection lost")])
+    fresh = FakeImporter([3])
+    attempts = []
+
+    def reconnect():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise StorageUnavailable("still restarting")  # first try: the database isn't back yet
+        return fresh
+
+    dead.outcomes.append(StorageUnavailable("still the dead connection"))
+    stats = WatchMessages(dead, sleep=lambda _: None, reconnect=reconnect).run(max_cycles=3)
+    assert len(attempts) == 2 and stats.saved == 3  # kept trying, then carried on with the new connection
+
+
+def test_channel_problems_do_not_reconnect_the_database():
+    attempts = []
+    importer = FakeImporter([SourceUnavailable("telegram down"), 0])
+    WatchMessages(importer, sleep=lambda _: None, reconnect=lambda: attempts.append(1)).run(max_cycles=2)
+    assert attempts == []

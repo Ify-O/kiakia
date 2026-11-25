@@ -28,6 +28,12 @@ Then open http://localhost:5173. Ctrl+C stops everything.
 - **Demo mode** ([ADR 0008](docs/adr/0008-demo-mode.md)): `KIAKIA_DEMO=1` with a database whose name
   ends in `demo` (the script creates `kiakia_demo`). `seed-demo` resets and fills it.
   `import` and `watch` are disabled, and the web app shows a 🎬 ribbon.
+- **Customer rights** ([ADR 0009](docs/adr/0009-customer-rights-and-export.md)): on a customer's page,
+  *Stop offers*, *Withdraw details* (erases what they gave) or *Forget this customer* (deletes everything,
+  logged anonymously).
+- **Export the offers list**: *Customers → ⬇️ Export offers list* gives Excel, CSV (Google Sheets:
+  File → Import) or a Google Ads Customer Match file. Only customers who said YES to offers are included.
+  API: `GET /v1/exports/customers?format=csv|xlsx&layout=standard|google-ads`.
 - **Presenting?** Follow [docs/DEMO.md](docs/DEMO.md).
 
 ## Week 1: Telegram importer

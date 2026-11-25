@@ -67,6 +67,11 @@ and replies are "sent" offline, so it works without Wi-Fi and never messages a r
 - Go to **👥 Customers**: show the consent badges. Open **Emeka**: details withdrawn, so
   phone and email are gone.
 
+- Open **Sade Bello** → **🔐 If they change their mind**: show *Withdraw details* (Cancel, don't
+  confirm) and explain *Forget this customer* (type the name to confirm).
+- Click **⬇️ Export offers list**: "only people who said YES to offers; Excel, CSV for Google Sheets, or
+  Google Ads' own format". (Don't download on the projector unless you want to show the file.)
+
 > Talking point (**privacy, NDPA 2023**): "We **can't** store a phone number without a recorded
 > YES. That rule is in the database itself, not just the app. Every YES/NO is kept with the exact
 > question we asked. Replying STOP opts a customer out of offers automatically."
@@ -81,7 +86,7 @@ and replies are "sent" offline, so it works without Wi-Fi and never messages a r
 - **ADRs:** `docs/adr/`. "Every contract change has a short decision record. Demo mode is ADR 0008."
 - **Architecture:** show the layers diagram in `docs/ARCHITECTURE.md` (A3): "The core doesn't
   know Telegram or Postgres exist; adding WhatsApp is a new adapter, not a rewrite."
-- Numbers: **207 tests**, CI on every PR (lint, types, migrations up/down, API drift check).
+- Numbers: **250+ tests**, CI on every PR (lint, types, migrations up/down, API drift check).
 
 ### 6. Close (15 s)
 

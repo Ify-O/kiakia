@@ -416,10 +416,37 @@ stateDiagram-v2
     granted --> withdrawn: they change their mind
 ```
 
-- **Details** (name, phone, email): saved only on `granted`; on `withdrawn` the phone and email are
-  erased (the database CHECK enforces it).
-- **Marketing** ("offers & sales"): the app only offers to ask once details are granted. A customer
-  who replies **STOP** (or "unsubscribe", "opt out"…) is moved to `withdrawn` automatically by the importer.
+- **Details** (the name they gave, phone, email): saved only on `granted`. On `declined` or
+  `withdrawn` they are erased, and offers are withdrawn too (ADR 0009).
+- **Marketing** ("offers & sales"): needs details consent first. A customer who replies **STOP**
+  (or "unsubscribe", "opt out"…) is moved to `withdrawn` automatically by the importer.
+- The database enforces both rules with CHECK constraints, so a bug can't break them:
+  `ck_contacts_details_need_consent` and `ck_contacts_marketing_needs_details`.
+- Every change is **compare-and-set** under a row lock: if two people record a change at the same
+  moment, the second gets `409 concurrent-change` instead of silently undoing a withdrawal.
+
+## A12b. Forget a customer and export the offers list (ADR 0009)
+
+```mermaid
+flowchart LR
+    subgraph RIGHTS["🔐 If they change their mind"]
+        W1["📭 Stop offers"] --> CE["consent_events<br/>(history)"]
+        W2["🧹 Withdraw details<br/>(erases name, phone, email<br/>+ stops offers)"] --> CE
+        F["🗑️ Forget customer<br/>DELETE /v1/customers/{id}"] --> TX["ONE transaction:<br/>conversations, messages,<br/>identities, consent history"]
+        TX --> PL[("privacy_log<br/>'an erasure happened'<br/>no personal data")]
+    end
+    subgraph EXPORT["⬇️ GET /v1/exports/customers"]
+        Q["Only marketing = granted<br/>AND details = granted"] --> B["build_table()<br/>standard or Google Ads layout,<br/>phones as +234…"]
+        B --> S{"format"}
+        S -->|csv| CSV["CsvWriter<br/>' before = + - @ (no formulas)"]
+        S -->|xlsx| X["XlsxWriter<br/>every cell stored as text"]
+        CSV & X --> PL
+    end
+```
+
+The rules (who is included, columns, phone format, formula safety) are pure functions in
+`application/privacy.py`; the file formats are adapters behind a `SpreadsheetWriter` port, so adding
+e.g. Google Sheets later is a new adapter, not a change to the rules.
 
 ## A13. Demo mode (ADR 0008)
 
@@ -610,6 +637,39 @@ flowchart LR
     end
     S1 --> S2 --> S3
 ```
+
+## B5. Code review, 2026-11-25 (after Assignment 2, customers and demo mode)
+
+Two independent reviews (backend and web) read the whole code base. Each finding was checked in the
+code before acting on it.
+
+**Fixed in this round ✅**
+
+| # | Finding | Fix |
+|---|---|---|
+| H1 | Consent race: a concurrent "asked" could undo a withdrawal | Compare-and-set under a row lock, 409 `concurrent-change` |
+| H2 | Withdrawing consent kept the name the customer gave | `contacts.full_name`, erased on withdrawal, CHECK constraint (migration 0007) |
+| H3 | `watch` crashed for good after a database restart | Lost connections → `StorageUnavailable`; the watcher reconnects |
+| M1 | Database outage mid-request gave 500, not 503 | Same wrapper; 503 now has `Retry-After` |
+| M4 | No query time limit | `statement_timeout` 10 s |
+| M5 | A new Telegram client per request: rate limiting didn't work | Senders built once per app |
+| M6 | No Host check on an API holding personal data | `TrustedHostMiddleware` (localhost only) |
+| L1, L4, L5 | "cancel" opted people out; DB row data could reach `import_runs.error`; odd Telegram bodies could crash | Fixed, with tests |
+| Web 1–3 | Drafts/keys lost on view switch (double send); success reported as failure; stale poll overwrote a save | Drafts above the view switch; confetti check runs on its own; `setData` invalidates in-flight polls |
+| Web 4–9 | Unhandled "load more" errors; consent question could be sent twice; error states ignored Problem Details; screen reader spam; a11y and contrast; 100-chat cap | All fixed |
+
+**Still open (next steps, none blocks the demo) 🟡**
+
+| # | Finding | Why it's not done yet |
+|---|---|---|
+| M2 | A reply can be delivered but not saved (DB fails after Telegram accepted it) | Needs an outbox table: a design change, deserves its own ADR |
+| M3 | `PostgresStore` is a "god class" (~650 lines, 15 ports) | Split by area (messages, conversations, customers, idempotency, stats); a big refactor best done after Saturday |
+| M4b | No connection pool; customer list runs sub-queries per row | `psycopg_pool` + summary columns when data grows |
+| L2 | Pagination cursors aren't tied to the filters | Hash the filters into the cursor scope |
+| L3 | "Channel not supported" returns 502 | Should be 409/422: a contract change |
+| L6 | No request ID linking a 500 to its log line | Add a middleware + `instance` id |
+| Web 9–10, 14 | Views call the API directly; `ConversationPane` is large; no component tests | A `queries.ts` data layer, split the pane, add Testing Library + MSW |
+| — | Watcher health isn't shown in `/health` | Report "last successful cycle" so the UI can warn if live messages stop |
 
 **Bottom line:** the architecture is **sound and follows Clean Architecture correctly**. The
 dependency rule is respected, the use cases are fully decoupled, and the reliability design (idempotency,

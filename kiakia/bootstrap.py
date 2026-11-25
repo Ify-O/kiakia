@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from kiakia.adapters.demo.sender import DemoSender
 from kiakia.adapters.postgres.repository import PostgresStore, connect
+from kiakia.adapters.spreadsheet.writers import CsvWriter, XlsxWriter
 from kiakia.adapters.telegram.client import TelegramClient
 from kiakia.adapters.telegram.sender import TelegramSender
 from kiakia.adapters.telegram.source import TelegramSource
@@ -26,12 +27,13 @@ from kiakia.application.conversations import (
 )
 from kiakia.application.customers import GetCustomer, ListCustomers, RecordConsent
 from kiakia.application.import_messages import ImportMessages
+from kiakia.application.privacy import ExportCustomers, ForgetCustomer
 from kiakia.application.replies import SendReply
 from kiakia.application.stats import GetInboxStats
 from kiakia.application.waiting import ListWaitingCustomers
 from kiakia.config import ConfigError, Settings
-from kiakia.domain.models import Channel
-from kiakia.domain.ports import MessageSender
+from kiakia.domain.models import Channel, ExportFormat
+from kiakia.domain.ports import MessageSender, SpreadsheetWriter
 
 
 @dataclass(frozen=True)
@@ -93,9 +95,21 @@ class Services:
     def record_consent(self) -> RecordConsent:
         return RecordConsent(self.store)
 
+    def forget_customer(self) -> ForgetCustomer:
+        return ForgetCustomer(self.store)
+
+    def export_customers(self) -> ExportCustomers:
+        return ExportCustomers(customers=self.store, log=self.store, writers=SPREADSHEET_WRITERS)
+
     def check_health(self) -> None:
         """Raises StorageUnavailable if the database can't be reached."""
         self.store.ping()
+
+
+SPREADSHEET_WRITERS: Mapping[ExportFormat, SpreadsheetWriter] = {
+    ExportFormat.CSV: CsvWriter(),
+    ExportFormat.XLSX: XlsxWriter(),
+}
 
 
 def default_senders(settings: Settings) -> dict[Channel, MessageSender]:

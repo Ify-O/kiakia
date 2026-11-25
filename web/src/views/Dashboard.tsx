@@ -54,7 +54,7 @@ export function Dashboard({
       </div>
 
       {stats.error !== undefined && !s ? (
-        <InlineError onRetry={stats.refresh} />
+        <InlineError error={stats.error} onRetry={stats.refresh} />
       ) : !s ? (
         <div className="kpis">
           <Skeletons n={5} />
@@ -110,7 +110,7 @@ export function Dashboard({
             </button>
           </h3>
           {waiting.error !== undefined && !waiting.data ? (
-            <InlineError onRetry={waiting.refresh} />
+            <InlineError error={waiting.error} onRetry={waiting.refresh} />
           ) : !waiting.data ? (
             <Skeletons n={3} />
           ) : waiting.data.data.length === 0 ? (

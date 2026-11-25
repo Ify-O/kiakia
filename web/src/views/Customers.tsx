@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { api, unwrap, type Channel, type ConsentStatus, type Customer } from "../api/client";
 import { Empty, InlineError, Skeletons } from "../components/common";
+import { CustomerRights } from "../components/CustomerRights";
+import { ExportMenu } from "../components/ExportMenu";
 import { useDebounced, useNow, usePolling } from "../hooks/usePolling";
 import { ago, plural, when } from "../lib/format";
 import { CHANNELS, PLATFORMS, PlatformIcon } from "../lib/platforms";
@@ -48,12 +50,13 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
             <input type="search" placeholder="Search name, @username, phone or email" aria-label="Search customers"
               maxLength={100} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="frow" aria-label="Filter by platform">
+          <div className="frow" role="group" aria-label="Filter by platform">
             <span className="hint">Platform:</span>
             <button className="chipbtn all" aria-pressed={channel === ""} onClick={() => setChannel("")}>All</button>
             {CHANNELS.map((ch) => (
-              <button key={ch} className="chipbtn" style={{ ["--c" as string]: `var(--${ch})` }}
-                aria-pressed={channel === "" || channel === ch} onClick={() => setChannel(channel === ch ? "" : ch)}>
+              // "pressed" only when THIS platform is the filter; with "All", the "on" class keeps every chip lit.
+              <button key={ch} className={`chipbtn ${channel === "" ? "on" : ""}`} style={{ ["--c" as string]: `var(--${ch})` }}
+                aria-pressed={channel === ch} onClick={() => setChannel(channel === ch ? "" : ch)}>
                 <PlatformIcon channel={ch} />
               </button>
             ))}
@@ -72,13 +75,16 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
               <option value="granted">✅ Wants offers</option>
               <option value="unknown">Not asked</option>
               <option value="declined">🚫 No offers</option>
-              <option value="withdrawn">🚫 Replied STOP</option>
+              <option value="withdrawn">🚫 Opted out</option>
             </select>
+          </div>
+          <div className="frow">
+            <ExportMenu />
           </div>
         </div>
         <div className="rows">
           {list.error !== undefined && !list.data ? (
-            <InlineError onRetry={list.refresh} />
+            <InlineError error={list.error} onRetry={list.refresh} />
           ) : !list.data ? (
             <Skeletons n={5} />
           ) : rows.length === 0 ? (
@@ -88,7 +94,7 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
               <button key={c.id} className="crow" aria-current={c.id === selected ? "true" : "false"} onClick={() => setSelected(c.id)}>
                 <span style={{ minWidth: 0 }}>
                   <span className="name">
-                    {c.displayName}{" "}
+                    {c.fullName ?? c.displayName}{" "}
                     <span className="icons">{c.channels.map((x) => <PlatformIcon key={x.channel} channel={x.channel} size="sm" />)}</span>
                   </span>
                   <span className="preview" style={{ display: "block" }}>
@@ -111,7 +117,8 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
       </section>
       <section className="card chat" aria-label="Customer">
         {selected ? (
-          <CustomerPanel key={selected} id={selected} onBack={() => setSelected(null)} onOpenChat={onOpenChat} />
+          <CustomerPanel key={selected} id={selected} onBack={() => setSelected(null)} onOpenChat={onOpenChat}
+            onForgotten={() => { setSelected(null); void list.refresh(); }} />
         ) : (
           <Empty icon="👥"><b>Pick a customer</b><br />See their platforms, details and consent history.</Empty>
         )}
@@ -128,15 +135,20 @@ const EVENT_TEXT: Record<string, string> = {
   "marketing:asked": "📣 Asked about offers & sales",
   "marketing:granted": "✅ Said YES to offers",
   "marketing:declined": "🚫 Said NO to offers",
-  "marketing:withdrawn": "🚫 Opted out of offers (e.g. replied STOP)",
+  "marketing:withdrawn": "🚫 Opted out of offers (STOP, or details withdrawn)",
 };
 
-function CustomerPanel({ id, onBack, onOpenChat }: { id: number; onBack: () => void; onOpenChat: (id: number) => void }) {
+function CustomerPanel({ id, onBack, onOpenChat, onForgotten }: {
+  id: number;
+  onBack: () => void;
+  onOpenChat: (id: number) => void;
+  onForgotten: () => void;
+}) {
   const d = usePolling(
     async () => unwrap(await api.GET("/v1/customers/{customerId}", { params: { path: { customerId: id } } })),
     `c${id}`,
   );
-  if (d.error !== undefined && !d.data) return <InlineError onRetry={d.refresh} />;
+  if (d.error !== undefined && !d.data) return <InlineError error={d.error} onRetry={d.refresh} />;
   const c = d.data;
   if (!c) return <Skeletons n={4} />;
   return (
@@ -145,7 +157,7 @@ function CustomerPanel({ id, onBack, onOpenChat }: { id: number; onBack: () => v
         <button className="back" onClick={onBack} aria-label="Back to customers">←</button>
         <PlatformIcon channel={c.firstChannel} size="lg" />
         <div>
-          <div className="who">{c.displayName}</div>
+          <div className="who">{c.fullName ?? c.displayName}</div>
           <div className="sub">First came from {PLATFORMS[c.firstChannel].label} · {when(c.firstContactAt)}</div>
         </div>
         <div className="actions">
@@ -155,6 +167,7 @@ function CustomerPanel({ id, onBack, onOpenChat }: { id: number; onBack: () => v
       </div>
       <div className="bubbles" style={{ background: "var(--surface)" }}>
         <dl className="kv">
+          <dt>Name they gave</dt><dd>{c.fullName ?? <span className="hint">not saved</span>}</dd>
           <dt>Phone</dt><dd>{c.phone ?? <span className="hint">not saved</span>}</dd>
           <dt>Email</dt><dd>{c.email ?? <span className="hint">not saved</span>}</dd>
           <dt>Platforms</dt>
@@ -169,6 +182,7 @@ function CustomerPanel({ id, onBack, onOpenChat }: { id: number; onBack: () => v
           ))}</dd>
           <dt>Orders</dt><dd>{c.orderCount}</dd>
         </dl>
+        <CustomerRights c={c} onChanged={() => void d.refresh()} onForgotten={onForgotten} />
         <h3 style={{ margin: "4px 14px 8px", fontSize: 15 }}>🧾 Consent history (proof)</h3>
         {c.consentHistory.length === 0 ? (
           <p className="hint" style={{ padding: "0 14px" }}>Nothing recorded yet: this customer has never been asked.</p>

@@ -307,7 +307,8 @@ class CustomerChannel:
 @dataclass(frozen=True)
 class Customer:
     id: int
-    display_name: str
+    display_name: str  # the name on their platform profile
+    full_name: str | None  # the name THEY gave us: only while details consent is granted
     phone: str | None  # only while details consent is granted
     email: str | None
     details_consent: ConsentStatus
@@ -375,3 +376,55 @@ class ConsentChange:
     wording: str | None = None
     evidence_message_id: int | None = None
     details: CustomerDetailsInput | None = None
+    # Compare-and-set: refuse if the current status is no longer this (None = don't check).
+    expected_current: ConsentStatus | None = None
+
+
+# ---------- Customer rights and export (ADR 0009) ----------
+
+
+class ExportFormat(StrEnum):
+    CSV = "csv"
+    XLSX = "xlsx"
+
+
+class ExportLayout(StrEnum):
+    STANDARD = "standard"
+    GOOGLE_ADS = "google-ads"
+
+
+@dataclass(frozen=True)
+class MarketingContact:
+    """One person on the offers list: said YES to offers, with details saved."""
+
+    full_name: str | None
+    display_name: str
+    phone: str | None
+    email: str | None
+    first_channel: Channel
+    first_contact_at: datetime
+
+
+@dataclass(frozen=True)
+class Table:
+    """A spreadsheet before it is written to a file format."""
+
+    headers: list[str]
+    rows: list[list[str]]
+
+
+@dataclass(frozen=True)
+class ExportFile:
+    filename: str
+    media_type: str
+    content: bytes
+    row_count: int
+
+
+@dataclass(frozen=True)
+class ErasureSummary:
+    """What was deleted, without saying who (this is what the privacy log keeps)."""
+
+    channels: list[Channel]
+    conversations: int
+    messages: int
