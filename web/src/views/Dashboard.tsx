@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, unwrap, type Channel } from "../api/client";
 import { ConversationRow, Empty, InlineError, Skeletons } from "../components/common";
 import { usePolling, useNow } from "../hooks/usePolling";
-import { duration, percent, presetRange, since, when, type Preset } from "../lib/format";
+import { duration, percent, plural, presetRange, since, when, type Preset } from "../lib/format";
 import { CATEGORY_LABEL, CHANNELS, PlatformPill } from "../lib/platforms";
 
 type Period = Extract<Preset, "today" | "7d" | "30d" | "all">;
@@ -71,7 +71,7 @@ export function Dashboard({
             <b>{waitingNow}</b>
             <small>
               {waitingNow
-                ? `customer${waitingNow === 1 ? "" : "s"} waiting for a reply right now · tap to answer`
+                ? `${plural(waitingNow, "customer")} waiting for a reply right now · tap to answer`
                 : "nobody waiting · all caught up 🎉"}
             </small>
           </button>

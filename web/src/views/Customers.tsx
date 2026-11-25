@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api, unwrap, type Channel, type ConsentStatus, type Customer } from "../api/client";
 import { Empty, InlineError, Skeletons } from "../components/common";
 import { useDebounced, useNow, usePolling } from "../hooks/usePolling";
-import { ago, when } from "../lib/format";
+import { ago, plural, when } from "../lib/format";
 import { CHANNELS, PLATFORMS, PlatformIcon } from "../lib/platforms";
 
 const CONSENT_LABEL: Record<ConsentStatus, string> = {
@@ -102,7 +102,7 @@ export function Customers({ onOpenChat }: { onOpenChat: (conversationId: number)
                 <span className="side">
                   {ago(c.lastContactAt, now)}
                   <br />
-                  {c.conversationCount} chat{c.conversationCount === 1 ? "" : "s"} · {c.orderCount} order{c.orderCount === 1 ? "" : "s"}
+                  {c.conversationCount} {plural(c.conversationCount, "chat")} · {c.orderCount} {plural(c.orderCount, "order")}
                 </span>
               </button>
             ))
