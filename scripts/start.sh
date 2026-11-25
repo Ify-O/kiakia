@@ -80,6 +80,9 @@ say "▶ Web app…"
 npm --prefix web run dev --silent -- --port 5173 --strictPort >/dev/null &
 pids+=($!)
 
+# Only say "running" once both answer (the API checks the database in /health)
+for _ in $(seq 1 30); do curl -sf -o /dev/null http://localhost:8000/health && break; sleep 1; done
+curl -sf -o /dev/null http://localhost:8000/health || { say "✖ The API didn't start: see the error above."; exit 1; }
 for _ in $(seq 1 30); do curl -s -o /dev/null http://localhost:5173/ && break; sleep 1; done
 echo
 if [[ $DEMO == 1 ]]; then
