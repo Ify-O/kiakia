@@ -1,6 +1,7 @@
 # Kiakia: Architecture Review
 
-> A review of the code as it is on `main` (Week 1 + Python 3.12 modernisation, updated after Sprints 1 and 2).
+> A review of the code (Week 1, Sprints 1–2, Assignment 2: API + web inbox, customer consent,
+> live watcher and demo mode). Last updated 2026-11-25.
 > Part A explains how it works, in diagrams. Part B judges it against best practice
 > and lists the weak parts, with evidence and fixes.
 > GitHub draws the diagrams automatically.
@@ -16,11 +17,13 @@ What Kiakia does today, in one picture.
 ```mermaid
 flowchart LR
     C["👤 Customer<br/>sends a message"] --> T["✈️ Telegram<br/>(holds messages ~24h)"]
-    O["🧑‍💼 Business owner<br/>runs commands"] --> K
-    K["⚙️ Kiakia<br/>(command line app)"] -->|"Step 1: ask for new messages<br/>(getUpdates)"| T
-    T -->|"Step 2: messages as JSON"| K
-    K -->|"Step 3: save, clean, no duplicates"| DB[("🐘 PostgreSQL<br/>in Docker")]
-    K -->|"Step 4: who is waiting?"| O
+    T <-->|"watch: long polling<br/>(getUpdates, 25 s)"| W["👀 kiakia watch<br/>(background worker)"]
+    W -->|"save, clean, no duplicates"| DB[("🐘 PostgreSQL<br/>in Docker")]
+    DB <--> API["⚙️ Kiakia API<br/>(FastAPI, contract = openapi.yaml)"]
+    API <-->|"/v1/… JSON"| WEB["📱 Web inbox<br/>(React, polls every few seconds)"]
+    O["🧑‍💼 Business owner"] --> WEB
+    API -->|"reply (sendMessage)"| T
+    S["🚀 scripts/start.sh"] -.->|"starts all of it<br/>(--demo: fake data, offline)"| W & API & WEB & DB
 ```
 
 ## A2. What kind of architecture is this?
@@ -40,45 +43,51 @@ and Value Objects (frozen dataclasses).
 ## A3. Layers: who may talk to whom
 
 Arrows mean "depends on / imports". **Every arrow points inwards**, which is the main rule of
-Clean Architecture.
+Clean Architecture. There are now **two entry points** (CLI and API) and both go through the same
+`bootstrap.py`, so they share every use case.
 
 ```mermaid
 flowchart TB
-    subgraph ENTRY["🚪 Entry point"]
-        CLI["cli.py<br/>commands + printing only"]
+    subgraph ENTRY["🚪 Entry points"]
+        CLI["cli.py<br/>import · watch · waiting · stats · seed-demo"]
+        API["api/<br/>FastAPI routes + Problem Details errors"]
         BOOT["bootstrap.py<br/>wiring + connection lifecycle<br/>(composition root)"]
-        CFG["config.py<br/>validated settings (pydantic)"]
+        CFG["config.py<br/>validated settings (pydantic)<br/>KIAKIA_DEMO guard"]
     end
 
     subgraph APP["🧠 Application: use cases"]
         IMP["ImportMessages"]
-        WAIT["ListWaitingCustomers"]
+        WATCH["WatchMessages"]
+        CONV["ListConversations · GetConversation<br/>ListMessages · ListFeed · UpdateConversation"]
+        REP["SendReply"]
+        CUST["ListCustomers · GetCustomer · RecordConsent"]
         STATS["GetInboxStats"]
     end
 
     subgraph DOMAIN["❤️ Domain: depends on nothing"]
-        MODELS["models.py<br/>Message, Sender, WaitingCustomer…"]
-        PORTS["ports.py<br/>MessageSource, MessageRepository, RejectStore,<br/>CursorStore, ImportRunLog, StatsQuery"]
+        MODELS["models.py<br/>Message, Conversation, Customer, Consent…"]
+        PORTS["ports.py<br/>13 small interfaces"]
         ERR["errors.py<br/>KiakiaError family"]
     end
 
     subgraph ADAPTERS["🔌 Adapters: the outside world"]
-        TG["telegram/<br/>client + parser + source"]
+        TG["telegram/<br/>client · parser · source · sender"]
         PG["postgres/<br/>PostgresStore (only SQL)"]
+        DEMO["demo/<br/>DemoSender (offline)"]
     end
 
     subgraph INFRA["🛠️ Infrastructure"]
         HTTP["http.py<br/>timeouts, retries, rate limit"]
     end
 
-    CLI --> BOOT
-    CLI --> CFG
-    BOOT --> IMP & WAIT & STATS
-    BOOT -.->|builds| TG & PG
-    IMP & WAIT & STATS --> PORTS
+    CLI & API --> BOOT
+    BOOT --> CFG
+    BOOT --> IMP & WATCH & CONV & REP & CUST & STATS
+    BOOT -.->|builds| TG & PG & DEMO
+    WATCH --> IMP
+    IMP & CONV & REP & CUST & STATS --> PORTS
     PORTS --> MODELS
-    TG -->|"implements MessageSource"| PORTS
-    PG -->|"implements 5 ports"| PORTS
+    TG & PG & DEMO -->|implement| PORTS
     TG --> HTTP
     TG & PG & HTTP --> ERR
 
@@ -86,14 +95,17 @@ flowchart TB
     classDef app fill:#fff4d6,stroke:#d4a017;
     classDef adapter fill:#e6f2ff,stroke:#2e86de;
     class MODELS,PORTS,ERR core;
-    class IMP,WAIT,STATS app;
-    class TG,PG,HTTP adapter;
+    class IMP,WATCH,CONV,REP,CUST,STATS app;
+    class TG,PG,DEMO,HTTP adapter;
 ```
 
 ## A4. Ports and adapters (the "plugs")
 
 The use cases only know the **interfaces** on the left. The real classes on the right fit into them.
-Tests plug in fakes instead.
+Tests plug in fakes instead. (This diagram shows the import ports; the API added more of the same kind:
+`ConversationQuery`, `ConversationUpdater`, `MessageSender`, `ReplyStore`, `IdempotencyStore`,
+`CustomerStore`, `OptOutRecorder`, `HealthCheck`. `PostgresStore` implements all the storage ones;
+`TelegramSender` and `DemoSender` both implement `MessageSender`.)
 
 ```mermaid
 classDiagram
@@ -223,24 +235,29 @@ flowchart TD
 
 ## A7. Database schema
 
-Managed by **Alembic migrations `0001` → `0002` → `0003`**. Unique keys (🔑) are what make imports idempotent.
+Managed by **Alembic migrations `0001` → `0006`**. Unique keys (🔑) are what make imports idempotent.
 
 ```mermaid
 erDiagram
     contacts ||--o{ contact_identities : "has one per channel"
     contacts ||--o{ conversations : "talks in"
+    contacts ||--o{ consent_events : "history of YES/NO"
     conversations ||--o{ messages : "contains"
+    messages |o--o{ idempotency_keys : "reply it produced"
 
     contacts {
         bigint id PK
         text display_name
-        timestamptz created_at
+        text phone "only if details_consent = granted"
+        text email "only if details_consent = granted"
+        text details_consent "unknown, asked, granted, declined, withdrawn"
+        text marketing_consent "same states"
     }
     contact_identities {
         bigint id PK
         bigint contact_id FK
         text channel "UNIQUE with external_id"
-        text external_id "e.g. Telegram user id"
+        text external_id
         text username
     }
     conversations {
@@ -248,91 +265,73 @@ erDiagram
         text channel "UNIQUE with external_chat_id"
         text external_chat_id
         bigint contact_id FK
-        timestamptz last_inbound_at "last customer msg"
-        timestamptz last_outbound_at "last business reply"
+        timestamptz last_inbound_at
+        timestamptz last_outbound_at
+        text category "enquiry, order, complaint, other (0005)"
+        timestamptz resolved_at "(0005)"
     }
     messages {
         bigint id PK
         bigint conversation_id FK
         text channel "UNIQUE with chat + message id"
-        text external_chat_id
         text external_message_id
         text direction "in or out"
         text kind "text, voice, image..."
         text body
-        text media_ref "file id for voice notes"
         timestamptz sent_at "always UTC"
     }
-    rejected_updates {
+    consent_events {
         bigint id PK
-        text source "UNIQUE with ref"
-        text ref "e.g. update_id"
-        text reason
-        jsonb raw "original payload"
-        timestamptz received_at
+        bigint contact_id FK
+        text kind "details or marketing"
+        text status "asked, granted, declined, withdrawn"
+        text wording "the exact question asked"
+        timestamptz recorded_at
     }
-    sync_cursors {
-        text source PK
-        text cursor
-        timestamptz updated_at
-    }
-    import_runs {
-        bigint id PK
-        text source
-        text status "running, succeeded, failed"
-        int records_seen
-        int records_saved
-        int records_bad
-        text error
+    idempotency_keys {
+        text scope PK "e.g. replies"
+        text key PK "client's Idempotency-Key"
+        text request_hash "same key + different body = 409"
+        text status "in_progress or completed"
+        bigint message_id FK
     }
 ```
 
-`sync_cursors`, `import_runs` and `rejected_updates` (dead letter, migration `0003`) are bookkeeping
-tables, not linked to the others. Migration `0002` added CHECK constraints on `channel` and indexes on
-the foreign keys.
+Bookkeeping tables not shown: `sync_cursors`, `import_runs`, `rejected_updates` (dead letter).
+The database itself enforces the privacy rule: CHECK `ck_contacts_details_need_consent` makes it
+**impossible** to store a phone or email unless details consent is `granted` (migration `0006`).
 
 ## A8. API design
 
-Kiakia **doesn't expose an HTTP API yet**. Today it has two "API surfaces":
+The contract is written **first**, by hand, in `openapi.yaml` (OpenAPI 3.1, v1.3.0), linted with
+Redocly in CI. The server serves that file at `/openapi.yaml`, contract tests (openapi-core +
+Schemathesis) prove the code matches it, and the web app's TypeScript types are **generated** from it.
+Every contract change has an ADR (`docs/adr/`).
 
 ```mermaid
 flowchart LR
-    subgraph IN["APIs Kiakia CONSUMES"]
-        TGAPI["Telegram Bot API<br/>GET /bot{token}/getUpdates<br/>offset, limit≤100, timeout=0"]
+    SPEC["📜 openapi.yaml<br/>(source of truth)"]
+    SPEC -->|"Redocly lint"| CI["✅ CI"]
+    SPEC -->|"contract tests"| API
+    SPEC -->|"openapi-typescript"| TYPES["web/src/api/schema.d.ts"]
+    TYPES --> WEB["📱 Web app (openapi-fetch)"]
+    WEB -->|"Vite proxy /v1, /health"| API
+
+    subgraph API["⚙️ FastAPI (kiakia/api)"]
+        E1["GET /v1/conversations<br/>status · channel · q · category · from/to · cursor"]
+        E2["GET · PATCH /v1/conversations/{id}"]
+        E3["GET /v1/conversations/{id}/messages"]
+        E4["POST /v1/conversations/{id}/replies<br/>Idempotency-Key required"]
+        E5["GET /v1/messages (feed)"]
+        E6["GET /v1/customers · /v1/customers/{id}<br/>POST /v1/customers/{id}/consent"]
+        E7["GET /v1/stats · /health (demoMode)"]
     end
-    subgraph OUT["APIs Kiakia OFFERS"]
-        C1["kiakia import [--limit N]"]
-        C2["kiakia waiting"]
-        C3["kiakia stats"]
-    end
-    subgraph INTERNAL["Internal API = the ports"]
-        P1["MessageSource.fetch"]
-        P2["MessageRepository.save_messages / waiting_customers"]
-        P3["CursorStore / ImportRunLog / RejectStore"]
-        P4["StatsQuery.inbox_stats"]
-    end
-    TGAPI --> P1
-    C1 --> P1 & P2 & P3
-    C2 --> P2
-    C3 --> P4
+    API --> BOOT["bootstrap.py → same use cases → same ports"]
 ```
 
-**Planned next (weeks 3–4):** a REST API (FastAPI) that reuses the **same use cases**, so nothing
-underneath changes:
-
-```mermaid
-flowchart LR
-    UI["📱 Web inbox (week 4)"] --> API
-    WH["Telegram / Meta webhooks"] --> API
-    subgraph API["FastAPI (new entry point)"]
-        E1["GET /conversations?waiting=true"]
-        E2["GET /conversations/{id}/messages"]
-        E3["POST /conversations/{id}/replies"]
-        E4["POST /webhooks/telegram"]
-    end
-    API --> BOOT["Same bootstrap.py wiring"] --> UC["Same use cases<br/>ImportMessages, ListWaitingCustomers,<br/>GetInboxStats + SendReply (new)"]
-    UC --> PORTS["Same ports"] --> ADP["Same adapters"]
-```
+Rules every endpoint follows: errors are **RFC 9457 Problem Details** (`application/problem+json`),
+lists use an **opaque keyset cursor** (no page numbers that skip rows when data changes), dates are
+strict **RFC 3339**, and unknown or `null` fields are rejected with a friendly field message.
 
 ## A9. Coupling: how tightly parts are tied together
 
@@ -348,6 +347,94 @@ flowchart LR
 | Alembic `env.py` → `kiakia.config` | Config coupling | ✅ Fine |
 | Integration tests → migrations | Tests build the DB through Alembic | ✅ Excellent: tests prove migrations work |
 
+
+## A10. Live messages: `kiakia watch`
+
+The watcher is a loop around the same `ImportMessages` use case. Telegram's **long polling** holds
+the request open for up to 25 s and answers the moment a message arrives, so new messages show up
+in a second or two without webhooks (which would need a public HTTPS address).
+
+```mermaid
+flowchart TD
+    START(["kiakia watch"]) --> IMP["ImportMessages.run()<br/>getUpdates(timeout=25)"]
+    IMP -->|"saved N (maybe 0)"| IMP
+    IMP -->|"SourceUnavailable / RateLimited<br/>(network down)"| BACK["wait 5 s → 10 → 20 → … max 60 s"] --> IMP
+    IMP -->|"409 Conflict<br/>(another poller running)"| BACK
+    IMP -->|"other 4xx<br/>(bad token)"| STOP(["stop with a clear error"])
+    IMP -->|"Ctrl+C"| BYE(["stop cleanly"])
+```
+
+## A11. Sending a reply safely (idempotency)
+
+A shaky phone connection can make the browser send the same reply twice. The `Idempotency-Key`
+(one per draft) makes the second request return the **first** result instead of messaging the
+customer twice.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant WEB as Web app
+    participant API as POST /replies
+    participant UC as SendReply
+    participant DB as PostgresStore
+    participant OUT as MessageSender<br/>(Telegram or Demo)
+
+    WEB->>API: body + Idempotency-Key K
+    API->>UC: execute(conversation, text, K)
+    UC->>DB: claim K (hash of body)
+    alt K already completed, same body
+        DB-->>UC: earlier message
+        UC-->>WEB: 201 same reply (nothing re-sent)
+    else K used with a different body
+        UC-->>WEB: 409 Problem: key reused
+    else K new
+        UC->>OUT: send
+        alt delivered
+            UC->>DB: save outbound message + mark K completed
+            UC-->>WEB: 201 reply
+        else failed for sure (4xx)
+            UC->>DB: release K (safe to retry)
+            UC-->>WEB: 502 Problem
+        else timeout: maybe delivered
+            Note over UC,DB: K stays locked (DeliveryUnknown):<br/>never risk a double message
+            UC-->>WEB: 502 Problem "check the chat"
+        end
+    end
+```
+
+## A12. Customer details and consent (NDPA 2023)
+
+Details are saved **only after a recorded YES**, and every change is kept in `consent_events`
+(with the exact wording asked). There are two separate consents, each with the same states:
+
+```mermaid
+stateDiagram-v2
+    [*] --> unknown: new customer
+    unknown --> asked: owner taps "Ask" (question sent in the chat)
+    asked --> granted: they said YES
+    asked --> declined: they said NO (the app won't ask again)
+    granted --> withdrawn: they change their mind
+```
+
+- **Details** (name, phone, email): saved only on `granted`; on `withdrawn` the phone and email are
+  erased (the database CHECK enforces it).
+- **Marketing** ("offers & sales"): the app only offers to ask once details are granted. A customer
+  who replies **STOP** (or "unsubscribe", "opt out"…) is moved to `withdrawn` automatically by the importer.
+
+## A13. Demo mode (ADR 0008)
+
+```mermaid
+flowchart LR
+    ENV["KIAKIA_DEMO=1"] --> CFG{"config.py:<br/>does the DB name<br/>end in 'demo'?"}
+    CFG -->|"no"| ERR["❌ ConfigError:<br/>refuse to start"]
+    CFG -->|"yes (kiakia_demo)"| BOOT["bootstrap.py"]
+    BOOT -->|"every channel"| DS["DemoSender:<br/>'delivers' offline,<br/>nothing reaches a person"]
+    BOOT -->|"import / watch"| OFF["disabled"]
+    SEED["seed-demo"] --> RESET["reset_demo_data()<br/>(refuses unless DB ends in 'demo')"] --> FILL["12 fake customers,<br/>6 platforms, every consent state"]
+    BOOT --> H["/health → demoMode: true"] --> RIB["🎬 ribbon in the web app"]
+```
+
+Two independent guards (config **and** the reset query) mean the real database can't be wiped by mistake.
 
 ---
 
@@ -399,6 +486,8 @@ The server's "retry after" hint is used as-is. `RetryPolicy.max_delay = 30` does
 *Fix:* `"127.0.0.1:${POSTGRES_PORT:-55432}:5432"`, so only your own laptop can connect.
 
 **W4. Messages are lost if the import isn't run within ~24 hours.**
+> 🟡 **Mostly fixed (2026-11-25):** `kiakia watch` (long polling, see A10) runs all the time, started by
+> `scripts/start.sh`. Still open: it only runs while your laptop is on; webhooks on a server remain the long-term fix.
 This is how Telegram's `getUpdates` works, not a bug, but today nothing runs the import automatically.
 *Fix (short term):* a scheduled job (cron/launchd) every few minutes.
 *Fix (proper, week 3):* **webhooks**, where Telegram pushes each message to us instantly. That's also
