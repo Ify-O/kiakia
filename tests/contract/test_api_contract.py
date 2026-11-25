@@ -514,6 +514,19 @@ def test_bad_consent_records_are_422(client, body):
     assert post_json(client, f"/v1/customers/{ada_id}/consent", body).status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "hint"),
+    [("phone", "call me", "+234 802 555 0123"), ("email", "not-an-email", "name@example.com")],
+)
+def test_bad_phone_or_email_gets_a_plain_language_message(client, field, value, hint):
+    """The form shows this text under the field, so it must not be a regex."""
+    ada_id, _ = ada_ids(client)
+    body = {"kind": "details", "status": "granted", "details": {field: value}}
+    [error] = post_json(client, f"/v1/customers/{ada_id}/consent", body).json()["errors"]
+    assert error["field"] == field
+    assert hint in error["message"] and "pattern" not in error["message"]
+
+
 def test_evidence_must_be_the_customers_own_chat(client):
     ada_id, _ = ada_ids(client)
     bayo_conv = call(client, "/v1/conversations", {"q": "bayo"}).json()["data"][0]["id"]

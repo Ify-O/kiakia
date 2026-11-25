@@ -46,6 +46,8 @@ _FRIENDLY = {
     ("text", "missing"): "is required",
     ("Idempotency-Key", "missing"): "is required (send a unique value per reply, e.g. a UUID)",
     ("Idempotency-Key", "string_pattern_mismatch"): "may only contain letters, digits, '-' and '_'",
+    ("phone", "string_pattern_mismatch"): "doesn't look like a phone number (e.g. +234 802 555 0123)",
+    ("email", "string_pattern_mismatch"): "doesn't look like an email address (e.g. name@example.com)",
 }
 
 
