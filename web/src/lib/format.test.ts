@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAY, HOUR, MIN, duration, heat, percent, presetRange } from "./format";
+import { DAY, HOUR, MIN, duration, heat, percent, plural, presetRange } from "./format";
 
 describe("duration: clear wording", () => {
   it.each([
@@ -36,4 +36,15 @@ describe("presetRange: filters become the API's from/to", () => {
 it("percent shows a dash when there is no data", () => {
   expect(percent(null)).toBe("–");
   expect(percent(0.667)).toBe("67%");
+});
+
+describe("plural: no more '1 chats'", () => {
+  it("uses the singular only for exactly one", () => {
+    expect(plural(1, "chat")).toBe("chat");
+    expect(plural(0, "chat")).toBe("chats");
+    expect(plural(3, "message")).toBe("messages");
+  });
+  it("takes an irregular plural", () => {
+    expect(plural(2, "person", "people")).toBe("people");
+  });
 });

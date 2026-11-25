@@ -15,6 +15,9 @@ export function duration(ms: number): string {
   return d === 1 ? "1 day" : `${d} days`;
 }
 
+/** "1 chat", "3 chats": the word only, so callers can style the number separately. */
+export const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? one : many);
+
 export const since = (iso: string, now = Date.now()): number => now - new Date(iso).getTime();
 export const ago = (iso: string, now = Date.now()): string => `${duration(since(iso, now))} ago`;
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, unwrap, type Channel, type FeedItem } from "../api/client";
 import { Empty, InlineError, Skeletons } from "../components/common";
 import { usePolling } from "../hooks/usePolling";
-import { percent, presetRange, when } from "../lib/format";
+import { percent, plural, presetRange, when } from "../lib/format";
 import { CHANNELS, KIND_LABEL, PLATFORMS, PlatformIcon } from "../lib/platforms";
 import { PeriodSwitch } from "./Dashboard";
 
@@ -62,9 +62,9 @@ export function Platforms({
             <button key={ch} className="card pcard" style={{ ["--c" as string]: `var(--${ch})` }}
               aria-pressed={channel === ch} onClick={() => onChannel(channel === ch ? null : ch)}>
               <PlatformIcon channel={ch} size="lg" /> <b>{s?.messagesReceived ?? 0}</b>
-              <small>messages received on {PLATFORMS[ch].label}</small>
+              <small>{plural(s?.messagesReceived ?? 0, "message")} received on {PLATFORMS[ch].label}</small>
               <small>
-                {s?.conversations ?? 0} chats · {s?.waiting ?? 0} waiting · {percent(s?.responseRate)} answered
+                {s?.conversations ?? 0} {plural(s?.conversations ?? 0, "chat")} · {s?.waiting ?? 0} waiting · {percent(s?.responseRate)} answered
               </small>
             </button>
           );
