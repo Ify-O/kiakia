@@ -149,7 +149,7 @@ def test_stats(client):
 
 
 def test_health(client):
-    assert call(client, "/health").json() == {"status": "ok", "database": "ok"}
+    assert call(client, "/health").json() == {"status": "ok", "database": "ok", "demoMode": False}
 
 
 # ---------- errors: Problem Details, correct status codes ----------

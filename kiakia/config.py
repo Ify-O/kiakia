@@ -13,7 +13,7 @@ Validated with pydantic-settings:
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     db_port: Port = Field(default=55432, validation_alias="POSTGRES_PORT")
     telegram_bot_token: SecretStr = Field(default=SecretStr(""), validation_alias="TELEGRAM_BOT_TOKEN")
     business_timezone: str = Field(default="Africa/Lagos", validation_alias="BUSINESS_TIMEZONE")
+    demo_mode: bool = Field(default=False, validation_alias="KIAKIA_DEMO")  # docs/adr/0008
 
     @field_validator("db_password")
     @classmethod
@@ -58,6 +59,15 @@ class Settings(BaseSettings):
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError(f"unknown time zone {value!r} (example: Africa/Lagos)") from exc
         return value
+
+    @model_validator(mode="after")
+    def _demo_only_on_a_demo_database(self) -> "Settings":
+        # Safety: demo mode wipes and re-seeds its database, so it must never point at real data.
+        if self.demo_mode and not self.db_name.endswith("demo"):
+            raise ValueError(
+                f"KIAKIA_DEMO=1 needs a demo database (POSTGRES_DB ending in 'demo', not {self.db_name!r})"
+            )
+        return self
 
     @property
     def business_tz(self) -> ZoneInfo:
@@ -88,10 +98,12 @@ def load_settings(require_telegram: bool = True) -> Settings:
     except ValidationError as exc:
         problems = []
         for err in exc.errors():
-            field = str(err["loc"][0]) if err["loc"] else "?"
-            name = _ENV_NAMES.get(field, field)
+            field = str(err["loc"][0]) if err["loc"] else ""
+            name = _ENV_NAMES.get(field, field) or "KIAKIA_DEMO"
             # Never echo the bad VALUE: it could be a secret.
-            message = "is missing" if err["type"] == "missing" else err["msg"]
+            message = (
+                "is missing" if err["type"] == "missing" else str(err["msg"]).removeprefix("Value error, ")
+            )
             problems.append(f"  - {name}: {message}")
         raise ConfigError(
             "Invalid settings (check your .env; see .env.example):\n" + "\n".join(problems)

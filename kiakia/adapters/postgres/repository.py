@@ -837,6 +837,20 @@ class PostgresStore:
                 (scope, key),
             )
 
+    # ---------- Demo mode (ADR 0008) ----------
+
+    def reset_demo_data(self) -> None:
+        """Delete ALL data, for re-seeding the demo. Refuses unless this is a *demo* database."""
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute("SELECT current_database()")
+            name: str = _one(cur)[0]
+            if not name.endswith("demo"):
+                raise StorageUnavailable(f"refusing to wipe {name!r}: only a demo database may be reset")
+            cur.execute(
+                "TRUNCATE messages, conversations, contact_identities, contacts, sync_cursors, import_runs, "
+                "rejected_updates, idempotency_keys, consent_events RESTART IDENTITY CASCADE"
+            )
+
     # ---------- HealthCheck ----------
 
     def ping(self) -> None:

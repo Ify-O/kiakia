@@ -245,10 +245,10 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
     def get_stats(services: ServicesDep, from_: From = None, to: To = None) -> InboxStatsOut:
         return InboxStatsOut.from_domain(services.get_inbox_stats().run(period(from_, to)))
 
-    @api.get("/health", response_model=HealthOut)
+    @api.get("/health", response_model=HealthOut, response_model_by_alias=True)
     def get_health(services: ServicesDep) -> HealthOut:
         services.check_health()
-        return HealthOut()
+        return HealthOut(demo_mode=services.settings.demo_mode)
 
     return api
 

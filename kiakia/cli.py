@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from kiakia.application.watch import WatchMessages
 from kiakia.bootstrap import app
 from kiakia.config import ConfigError, load_settings
+from kiakia.demo_seed import seed
 from kiakia.domain.errors import KiakiaError
 
 
@@ -51,6 +52,16 @@ def cmd_watch(args: argparse.Namespace) -> None:
             watcher.run(on_saved=lambda n: print(f"📩 {n} new message(s) saved", flush=True))
     except KeyboardInterrupt:
         print("\nStopped watching.")
+
+
+def cmd_seed_demo(args: argparse.Namespace) -> None:
+    """Reset the DEMO database and fill it with fake customers (ADR 0008)."""
+    settings = load_settings(require_telegram=False)
+    if not settings.demo_mode:
+        raise ConfigError("seed-demo only runs in demo mode: set KIAKIA_DEMO=1 and POSTGRES_DB=kiakia_demo")
+    with app(settings) as services:
+        n = seed(services.store)
+    print(f"🎬 Demo database '{settings.db_name}' filled with {n} fake customers.")
 
 
 def cmd_waiting(args: argparse.Namespace) -> None:
@@ -90,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         func=cmd_watch
     )
     sub.add_parser("waiting", help="customers still waiting for a reply").set_defaults(func=cmd_waiting)
+    sub.add_parser("seed-demo", help="demo mode only: reset + fill the demo database").set_defaults(
+        func=cmd_seed_demo
+    )
     sub.add_parser("stats", help="what's in the database").set_defaults(func=cmd_stats)
     args = parser.parse_args(argv)
 
