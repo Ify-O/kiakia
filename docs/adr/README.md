@@ -16,5 +16,6 @@ changed first, and an ADR explains why.**
 | [0006](0006-dashboard-filters-resolve-categories.md) | Date filters, per-platform stats + response rate, all-messages list, resolve + categories | Accepted |
 | [0007](0007-customer-list-with-recorded-consent.md) | A light customer list, with consent asked in the chat and recorded (NDPA, platform rules) | Accepted |
 | [0008](0008-demo-mode.md) | Demo mode: own database, fake customers, offline delivery, clearly labelled | Accepted |
+| [0009](0009-customer-rights-and-export.md) | Customer rights (withdraw, forget) and a consented CSV/Excel export for ads | Accepted |
 
 Template: Status · Context · Decision · Consequences.
