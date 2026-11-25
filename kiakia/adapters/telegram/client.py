@@ -70,10 +70,19 @@ class TelegramClient:
         result = self._result("sendMessage", body)
         return result if isinstance(result, dict) else {}
 
-    def get_updates(self, offset: int | None, limit: int = MAX_LIMIT) -> list[dict[str, Any]]:
+    def get_updates(
+        self, offset: int | None, limit: int = MAX_LIMIT, wait_seconds: int = 0
+    ) -> list[dict[str, Any]]:
         """Fetch pending updates. Passing `offset` CONFIRMS (deletes) all updates before it,
-        so only pass an offset after the earlier updates are saved."""
-        params: dict[str, Any] = {"limit": max(1, min(limit, MAX_LIMIT)), "timeout": 0}
+        so only pass an offset after the earlier updates are saved.
+
+        `wait_seconds` > 0 = long polling: Telegram holds the request open until a message
+        arrives (or the time is up), so new messages show up almost instantly. It must stay
+        below the HTTP read timeout (30 s)."""
+        params: dict[str, Any] = {
+            "limit": max(1, min(limit, MAX_LIMIT)),
+            "timeout": max(0, min(wait_seconds, 25)),
+        }
         if offset is not None:
             params["offset"] = offset
         result = self._call("getUpdates", params)

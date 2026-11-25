@@ -12,6 +12,24 @@ Messaging only: no CRM, no marketing broadcasts.
 - Architecture diagrams and review (weak parts + improvement plan): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - UI/UX design (screens, states, contract mapping) and a clickable mockup: [docs/ui/UI_DESIGN.md](docs/ui/UI_DESIGN.md)
 
+## Quick start: one command
+
+Needs uv, Docker (Colima is fine), Node 22 and a filled-in `.env` (see "How to run" below).
+
+```bash
+./scripts/start.sh          # real mode: database + API + live Telegram watcher + web app
+./scripts/start.sh --demo   # demo mode: fake customers on all 6 platforms, nothing is really sent
+```
+
+Then open http://localhost:5173. Ctrl+C stops everything.
+
+- **Live messages:** `uv run python -m kiakia.cli watch` keeps listening to Telegram (long polling),
+  so new messages appear in the inbox within seconds. The start script runs it for you.
+- **Demo mode** ([ADR 0008](docs/adr/0008-demo-mode.md)): `KIAKIA_DEMO=1` with a database whose name
+  ends in `demo` (the script creates `kiakia_demo`). `seed-demo` resets and fills it.
+  `import` and `watch` are disabled, and the web app shows a 🎬 ribbon.
+- **Presenting?** Follow [docs/DEMO.md](docs/DEMO.md).
+
 ## Week 1: Telegram importer
 
 ### Which API and why

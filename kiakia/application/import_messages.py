@@ -58,9 +58,13 @@ class ImportMessages:
         self.batch_size = batch_size
         self.opt_outs = opt_outs
 
-    def run(self, max_records: int | None = None, max_batches: int = 1000) -> ImportSummary:
+    def run(
+        self, max_records: int | None = None, max_batches: int = 1000, record_empty: bool = True
+    ) -> ImportSummary:
+        """`record_empty=False` (used by `watch`) only logs runs that actually received something,
+        so quiet periods don't fill import_runs with thousands of empty rows."""
         summary = ImportSummary(source=self.source.name)
-        run_id = self.runs.start_run(self.source.name)
+        run_id: int | None = self.runs.start_run(self.source.name) if record_empty else None
         try:
             while summary.batches < max_batches:
                 limit = self.batch_size
@@ -73,6 +77,8 @@ class ImportMessages:
                 if result.next_cursor is None:  # nothing new
                     break
 
+                if run_id is None:
+                    run_id = self.runs.start_run(self.source.name)
                 summary.batches += 1
                 summary.seen += len(result.messages) + result.ignored + len(result.rejects)
                 summary.ignored += result.ignored
@@ -91,6 +97,8 @@ class ImportMessages:
             # Recording the failure must never hide the real cause: if the database is
             # down, finish_run fails too, so log that and re-raise the ORIGINAL error.
             try:
+                if run_id is None:  # failures are always recorded, even in quiet mode
+                    run_id = self.runs.start_run(self.source.name)
                 self.runs.finish_run(
                     run_id,
                     status=RunStatus.FAILED,
@@ -102,7 +110,8 @@ class ImportMessages:
             except Exception as log_exc:
                 log.error("Could not record failed run %s: %s", run_id, log_exc)
             raise
-        self.runs.finish_run(
-            run_id, status=RunStatus.SUCCEEDED, seen=summary.seen, saved=summary.saved, bad=summary.bad
-        )
+        if run_id is not None:
+            self.runs.finish_run(
+                run_id, status=RunStatus.SUCCEEDED, seen=summary.seen, saved=summary.saved, bad=summary.bad
+            )
         return summary

@@ -246,6 +246,7 @@ class ReplyIn(ApiModel):
 class HealthOut(ApiModel):
     status: str = "ok"
     database: str = "ok"
+    demo_mode: bool = False
 
 
 # ---------- Customers + consent (ADR 0007) ----------

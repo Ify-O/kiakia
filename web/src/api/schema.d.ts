@@ -535,6 +535,8 @@ export interface components {
             status: "ok";
             /** @enum {string} */
             database: "ok";
+            /** @description True when running on the demo database with fake customers (docs/adr/0008). */
+            demoMode: boolean;
         };
         FieldError: {
             /** @description Which input was wrong, e.g. `text`, `limit` or `Idempotency-Key`. */

@@ -235,3 +235,9 @@
   .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 10px; padding: 0 14px 12px; font-size: 14px; }
   .kv dt { color: var(--muted); }
   .kv dd { margin: 0; }
+
+  /* Demo mode (ADR 0008): impossible to mistake fake customers for real ones */
+  .demo-ribbon { margin: -2px 0 10px; padding: 7px 12px; border-radius: 10px; font-size: 13px;
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--surface)) 0 12px,
+      color-mix(in srgb, var(--accent) 12%, var(--surface)) 12px 24px);
+    border: 1px dashed var(--accent); }

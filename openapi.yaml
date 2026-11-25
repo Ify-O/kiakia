@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Kiakia API
-  version: 1.2.0
+  version: 1.3.0
   summary: Every customer, answered fast.
   description: |
     The contract for Kiakia, a single inbox for small businesses that sell through chat.
@@ -1065,7 +1065,7 @@ components:
     Health:
       type: object
       additionalProperties: false
-      required: [status, database]
+      required: [status, database, demoMode]
       properties:
         status:
           type: string
@@ -1073,6 +1073,9 @@ components:
         database:
           type: string
           enum: [ok]
+        demoMode:
+          type: boolean
+          description: True when running on the demo database with fake customers (docs/adr/0008).
 
     FieldError:
       type: object

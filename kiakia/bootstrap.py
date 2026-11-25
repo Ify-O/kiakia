@@ -12,6 +12,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+from kiakia.adapters.demo.sender import DemoSender
 from kiakia.adapters.postgres.repository import PostgresStore, connect
 from kiakia.adapters.telegram.client import TelegramClient
 from kiakia.adapters.telegram.sender import TelegramSender
@@ -41,11 +42,15 @@ class Services:
     settings: Settings
     senders: Mapping[Channel, MessageSender] = field(default_factory=dict)
 
-    def import_messages(self) -> ImportMessages:
+    def import_messages(self, wait_seconds: int = 0) -> ImportMessages:
+        if self.settings.demo_mode:
+            raise ConfigError(
+                "import/watch are off in demo mode: the demo database only holds fake customers (ADR 0008)."
+            )
         token = self.settings.telegram_bot_token.get_secret_value()
         if not token:
             raise ConfigError("Missing setting TELEGRAM_BOT_TOKEN. Copy .env.example to .env and fill it in.")
-        source = TelegramSource(TelegramClient(token))
+        source = TelegramSource(TelegramClient(token), wait_seconds=wait_seconds)
         return ImportMessages(
             source=source,
             messages=self.store,
@@ -95,6 +100,8 @@ class Services:
 
 def default_senders(settings: Settings) -> dict[Channel, MessageSender]:
     """One sender per channel Kiakia can reply on. Telegram needs its bot token."""
+    if settings.demo_mode:  # offline: nothing is ever sent to a real person (ADR 0008)
+        return dict.fromkeys(Channel, DemoSender())
     senders: dict[Channel, MessageSender] = {}
     token = settings.telegram_bot_token.get_secret_value()
     if token:
