@@ -81,7 +81,7 @@ and replies are "sent" offline, so it works without Wi-Fi and never messages a r
 - **ADRs:** `docs/adr/`. "Every contract change has a short decision record. Demo mode is ADR 0008."
 - **Architecture:** show the layers diagram in `docs/ARCHITECTURE.md` (A3): "The core doesn't
   know Telegram or Postgres exist; adding WhatsApp is a new adapter, not a rewrite."
-- Numbers: **205 tests**, CI on every PR (lint, types, migrations up/down, API drift check).
+- Numbers: **207 tests**, CI on every PR (lint, types, migrations up/down, API drift check).
 
 ### 6. Close (15 s)
 
