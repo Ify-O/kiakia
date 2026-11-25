@@ -162,7 +162,14 @@ export interface paths {
         get: operations["getCustomer"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Forget a customer (erase all their data)
+         * @description The customer's right to erasure (docs/adr/0009). Deletes the customer, their platform
+         *     identities, conversations, messages and consent history, in one transaction. **Cannot be undone.**
+         *     Only an anonymous note that an erasure happened is kept (no personal data).
+         *     The chat itself still exists on the customer's platform; Kiakia can't delete it there.
+         */
+        delete: operations["forgetCustomer"];
         options?: never;
         head?: never;
         patch?: never;
@@ -186,7 +193,8 @@ export interface paths {
          *     for `details` ("save my details") or `marketing` ("send me offers"). Pass the `conversationId`
          *     where it happened: its latest customer message is kept as evidence.
          *     - `details` (name/phone/email) may only be sent with `kind: details, status: granted`.
-         *     - Declining or withdrawing `details` erases phone and email.
+         *     - Declining or withdrawing `details` erases the name they gave, phone and email, and also
+         *       withdraws `marketing` (offers need contact details; docs/adr/0009).
          *     - Recording the customer's current status again changes nothing (safe to repeat).
          */
         post: operations["recordConsent"];
@@ -209,6 +217,29 @@ export interface paths {
          *     (`waiting`, `oldestWaitingSince`). Definitions are in docs/adr/0006.
          */
         get: operations["getStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/exports/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the offers list as CSV or Excel
+         * @description Customers who said **YES to offers** (`marketingConsent = granted`) and have saved details,
+         *     as a file to open in Excel or Google Sheets, or to upload to Google Ads Customer Match
+         *     (docs/adr/0009). Nobody else is ever included. Each export is logged (without personal data).
+         *     Text cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets don't run them.
+         */
+        get: operations["exportCustomers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -386,7 +417,10 @@ export interface components {
         CustomerFields: {
             /** Format: int64 */
             id: number;
+            /** @description The name shown on their platform profile (e.g. Telegram). */
             displayName: string;
+            /** @description The name the customer gave us. Only present when they agreed to save their details. */
+            fullName: string | null;
             /** @description Only present when the customer agreed to save their details. */
             phone: string | null;
             /** @description Only present when the customer agreed to save their details. */
@@ -605,7 +639,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description The `Idempotency-Key` was already used with a different request body, or the first request with it is still being processed (or its delivery is unconfirmed). */
+        /** @description Conflict: the `Idempotency-Key` was already used with a different request body or is still being processed, or (`concurrent-change`) someone else changed the same record since you read it. */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -1015,6 +1049,31 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    forgetCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The customer's id. */
+                customerId: components["parameters"]["CustomerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Forgotten. Asking again returns 404. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     recordConsent: {
         parameters: {
             query?: never;
@@ -1054,6 +1113,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -1080,6 +1140,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InboxStats"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    exportCustomers: {
+        parameters: {
+            query?: {
+                /** @description `csv` opens everywhere (Excel, Google Sheets, Google Ads); `xlsx` is an Excel file. */
+                format?: "csv" | "xlsx";
+                /**
+                 * @description `standard`: Name, Phone, Email, Platform, Customer since.
+                 *     `google-ads`: Google's Customer Match columns (Email, Phone, First Name, Last Name, Country),
+                 *     phones as `+234…`.
+                 */
+                layout?: "standard" | "google-ads";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file, as a download (`Content-Disposition: attachment`). */
+            200: {
+                headers: {
+                    /** @description `attachment; filename="kiakia-offers-list-2026-11-25.csv"` */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
                 };
             };
             400: components["responses"]["BadRequest"];
