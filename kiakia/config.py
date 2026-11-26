@@ -10,6 +10,7 @@ Validated with pydantic-settings:
 - Environment variables win over the .env file (so CI and tests can override).
 """
 
+import re
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -23,6 +24,7 @@ class ConfigError(Exception):
 
 
 Port = Annotated[int, Field(ge=1, le=65535)]
+_EMAIL = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$")
 NonEmpty = Annotated[str, Field(min_length=1)]
 
 
@@ -43,6 +45,16 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr = Field(default=SecretStr(""), validation_alias="TELEGRAM_BOT_TOKEN")
     business_timezone: str = Field(default="Africa/Lagos", validation_alias="BUSINESS_TIMEZONE")
     demo_mode: bool = Field(default=False, validation_alias="KIAKIA_DEMO")  # docs/adr/0008
+    # Email channel (docs/adr/0010): a dedicated mailbox + an app password, never a personal password.
+    email_address: str = Field(default="", validation_alias="EMAIL_ADDRESS")
+    email_app_password: SecretStr = Field(default=SecretStr(""), validation_alias="EMAIL_APP_PASSWORD")
+    email_display_name: NonEmpty = Field(
+        default="Kiakia", max_length=80, validation_alias="EMAIL_DISPLAY_NAME"
+    )
+    email_imap_host: NonEmpty = Field(default="imap.gmail.com", validation_alias="EMAIL_IMAP_HOST")
+    email_imap_port: Port = Field(default=993, validation_alias="EMAIL_IMAP_PORT")
+    email_smtp_host: NonEmpty = Field(default="smtp.gmail.com", validation_alias="EMAIL_SMTP_HOST")
+    email_smtp_port: Port = Field(default=465, validation_alias="EMAIL_SMTP_PORT")
 
     @field_validator("db_password")
     @classmethod
@@ -59,6 +71,31 @@ class Settings(BaseSettings):
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError(f"unknown time zone {value!r} (example: Africa/Lagos)") from exc
         return value
+
+    @field_validator("email_address")
+    @classmethod
+    def _valid_email_address(cls, value: str) -> str:
+        value = value.lower()
+        if value and not _EMAIL.fullmatch(value):
+            raise ValueError("doesn't look like an email address (e.g. shop@gmail.com)")
+        return value
+
+    @field_validator("email_display_name")
+    @classmethod
+    def _one_line_name(cls, value: str) -> str:
+        if any(ch in value for ch in '\r\n<>"@'):
+            raise ValueError("must be a plain name on one line (e.g. Ada's Bags)")
+        return value
+
+    @model_validator(mode="after")
+    def _email_needs_both_address_and_password(self) -> "Settings":
+        if bool(self.email_address) != bool(self.email_app_password.get_secret_value().strip()):
+            raise ValueError("set both EMAIL_ADDRESS and EMAIL_APP_PASSWORD, or neither")
+        return self
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.email_address)
 
     @model_validator(mode="after")
     def _demo_only_on_a_demo_database(self) -> "Settings":
@@ -99,7 +136,7 @@ def load_settings(require_telegram: bool = True) -> Settings:
         problems = []
         for err in exc.errors():
             field = str(err["loc"][0]) if err["loc"] else ""
-            name = _ENV_NAMES.get(field, field) or "KIAKIA_DEMO"
+            name = _ENV_NAMES.get(field, field) or "settings"
             # Never echo the bad VALUE: it could be a secret.
             message = (
                 "is missing" if err["type"] == "missing" else str(err["msg"]).removeprefix("Value error, ")

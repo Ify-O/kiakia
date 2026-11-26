@@ -105,6 +105,10 @@ class ResilientHttpClient:
                 last_problem = "timed out"
             except requests.ConnectionError:
                 last_problem = "connection failed"
+            except requests.RequestException as exc:
+                # Anything else requests can raise (e.g. a broken chunked answer). Only the class
+                # name is kept: the message could contain the URL, and Telegram's URL holds the token.
+                last_problem = f"request failed ({type(exc).__name__})"
             else:
                 if resp.status_code < 400:
                     try:
@@ -174,6 +178,11 @@ class ResilientHttpClient:
                 last_problem = "could not connect"
             except requests.Timeout:
                 raise DeliveryUnknown(f"{label}: no answer in time; it may have been delivered") from None
+            except requests.RequestException as exc:
+                # e.g. the answer broke off half-way: the server may have acted, so never retry.
+                raise DeliveryUnknown(
+                    f"{label}: request failed ({type(exc).__name__}); it may have been delivered"
+                ) from None
             else:
                 if resp.status_code < 400:
                     try:

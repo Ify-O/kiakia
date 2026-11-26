@@ -60,19 +60,24 @@ from kiakia.domain.models import (
 from kiakia.domain.ports import Keyset
 
 
+def connection_kwargs(host: str, port: int, user: str, password: str, dbname: str) -> dict[str, Any]:
+    """How EVERY Kiakia connection is opened (single connections and the API's pool alike)."""
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "password": password,
+        "dbname": dbname,
+        "connect_timeout": 5,
+        "autocommit": True,
+        # No single query may hang a request or the watcher for ever (review finding M4).
+        "options": "-c statement_timeout=10000",
+    }
+
+
 def connect(host: str, port: int, user: str, password: str, dbname: str) -> psycopg.Connection:
     try:
-        return psycopg.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            dbname=dbname,
-            connect_timeout=5,
-            autocommit=True,
-            # No single query may hang a request or the watcher for ever (review finding M4).
-            options="-c statement_timeout=10000",
-        )
+        return psycopg.connect(**connection_kwargs(host, port, user, password, dbname))
     except psycopg.OperationalError as exc:
         # Keep the message short: it can contain host/port but never the password.
         first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
@@ -474,6 +479,9 @@ class PostgresStore:
 
     def _upsert_message(self, cur: psycopg.Cursor, m: Message, conversation_id: int) -> None:
         # Same (channel, chat, message id) = same message: update it (e.g. an edit), never duplicate.
+        # Only a message going the SAME way may be updated: an imported (incoming) message must never
+        # rewrite one of the business's own replies, even if a sender picks the same id on purpose
+        # (email lets the sender choose its Message-ID; security review 2026-11-26).
         cur.execute(
             """INSERT INTO messages (conversation_id, channel, external_chat_id, external_message_id,
                                      direction, kind, body, media_ref, sent_at)
@@ -481,7 +489,8 @@ class PostgresStore:
                ON CONFLICT (channel, external_chat_id, external_message_id) DO UPDATE SET
                    kind = EXCLUDED.kind,
                    body = EXCLUDED.body,
-                   media_ref = EXCLUDED.media_ref""",
+                   media_ref = EXCLUDED.media_ref
+               WHERE messages.direction = EXCLUDED.direction""",
             (
                 conversation_id,
                 m.channel.value,

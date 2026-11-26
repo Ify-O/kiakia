@@ -86,9 +86,25 @@ and replies are "sent" offline, so it works without Wi-Fi and never messages a r
 - **ADRs:** `docs/adr/`. "Every contract change has a short decision record. Demo mode is ADR 0008."
 - **Architecture:** show the layers diagram in `docs/ARCHITECTURE.md` (A3): "The core doesn't
   know Telegram or Postgres exist; adding WhatsApp is a new adapter, not a rewrite."
-- Numbers: **250+ tests**, CI on every PR (lint, types, migrations up/down, API drift check).
+- Numbers: **300+ tests**, CI on every PR (lint, types, migrations up/down, API drift check).
 
-### 6. Close (15 s)
+### 6. Live: "message me now" (2 min, optional, needs Wi-Fi)
+
+Demo mode is offline on purpose, so for this part switch to **real mode**: Ctrl+C, then
+`./scripts/start.sh` (no `--demo`). Put this on a slide or the board:
+
+> **Message Kiakia now:** Telegram **@your_bot_name** (add "· Email **your-shop@gmail.com**" once email is set up)
+
+- Telegram messages appear in the inbox within seconds (email ones within ~10 s, if email is set up).
+- Answer a few live: each reply arrives in the sender's Telegram.
+- Say: *"Email is already built as a second channel **without touching the core**: one new
+  adapter (ADR 0010). Switching it on is two lines of settings. That's the architecture paying off."*
+- Only new mail is read: Kiakia never imports old emails, never marks them read, and ignores newsletters and auto-replies.
+
+Before class: send your bot one Telegram message and check it appears. Email is optional: only if
+`EMAIL_ADDRESS` + a Gmail **app password** are in `.env` (README → Email channel); otherwise leave both out.
+
+### 7. Close (15 s)
 
 > "What's next: WhatsApp and Instagram adapters, voice notes to text, and payment links in the chat."
 
@@ -101,7 +117,8 @@ and replies are "sent" offline, so it works without Wi-Fi and never messages a r
 | Port 8000 or 5173 "already in use" | Close the other terminal running Kiakia, or `lsof -i :8000` to find it, then rerun. |
 | Docker/Colima won't start | `colima stop && colima start`, then rerun the script. |
 | Page shows "Couldn't load…" | The API stopped: look at the terminal for the error, Ctrl+C, rerun. |
-| Wi-Fi is down | Nothing to do: demo mode works fully offline. |
+| Wi-Fi is down | Nothing to do: demo mode works fully offline. Skip step 6. |
+| Email watcher says "sign-in refused" | The app password is wrong or was revoked: create a new one, update `.env`, rerun. Telegram keeps working meanwhile. |
 | Everything fails | Show the clickable mockup `docs/ui/mockup.html` (open the file in a browser), the diagrams in `docs/ARCHITECTURE.md`, and the passing CI on GitHub. |
 | Data got messy during rehearsal | Ctrl+C and rerun `./scripts/start.sh --demo`: it resets the demo data. |
 

@@ -8,7 +8,8 @@ Run locally:
     uv run uvicorn kiakia.api.app:create_app_from_env --factory --reload
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path as FilePath
 from typing import Annotated, Any, Literal
@@ -17,8 +18,7 @@ import yaml
 from fastapi import Depends, FastAPI, Header, Path, Query, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from kiakia.bootstrap import Services, default_senders
-from kiakia.bootstrap import app as services_for
+from kiakia.bootstrap import Services, api_pool, default_senders, pooled_app
 from kiakia.config import Settings, load_settings
 from kiakia.domain.errors import InvalidInput, InvalidQuery
 from kiakia.domain.models import (
@@ -53,6 +53,7 @@ from .schemas import (
     MessagePageOut,
     ReplyIn,
 )
+from .security import SecurityHeaders
 
 CONTRACT_PATH = FilePath(__file__).resolve().parents[2] / "openapi.yaml"
 
@@ -94,11 +95,24 @@ def load_contract() -> dict[str, Any]:
 
 def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | None = None) -> FastAPI:
     contract = load_contract()
-    api = FastAPI(title="Kiakia API", version=str(contract["info"]["version"]))
+    # A few database connections kept open and shared by all requests (review finding M4b):
+    # opening a new one per request cost ~55 ms each time. Closed when the API stops.
+    pool = api_pool(settings)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            pool.close()
+
+    api = FastAPI(title="Kiakia API", version=str(contract["info"]["version"]), lifespan=lifespan)
     # The API has no logins yet and holds customer data, so only answer requests addressed to this
     # computer. That blocks "DNS rebinding", where a web page tricks your browser into calling
     # localhost (review finding M6). "testserver" is the name used by the automated tests.
     api.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
+    # Added last = runs first, so even a refused Host (400) gets the headers.
+    api.add_middleware(SecurityHeaders)
     # Build the senders ONCE, so the HTTP client and its rate limiting are shared by all
     # requests instead of being created again for every reply (review finding M5).
     senders = senders if senders is not None else default_senders(settings)
@@ -106,9 +120,8 @@ def create_app(settings: Settings, senders: Mapping[Channel, MessageSender] | No
     install_error_handlers(api)
 
     def get_services() -> Iterator[Services]:
-        # One DB connection per request, always closed afterwards (bootstrap.app).
-        # A connection pool is the next step when traffic grows.
-        with services_for(settings, senders) as services:
+        # One pooled DB connection per request, always given back afterwards (bootstrap.pooled_app).
+        with pooled_app(pool, settings, senders) as services:
             yield services
 
     ServicesDep = Annotated[Services, Depends(get_services)]

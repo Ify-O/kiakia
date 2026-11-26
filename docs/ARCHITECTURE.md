@@ -664,7 +664,7 @@ code before acting on it.
 |---|---|---|
 | M2 | A reply can be delivered but not saved (DB fails after Telegram accepted it) | Needs an outbox table: a design change, deserves its own ADR |
 | M3 | `PostgresStore` is a "god class" (~650 lines, 15 ports) | Split by area (messages, conversations, customers, idempotency, stats); a big refactor best done after Saturday |
-| M4b | No connection pool; customer list runs sub-queries per row | `psycopg_pool` + summary columns when data grows |
+| M4b (rest) | Customer list runs sub-queries per row | Summary columns when data grows (the pool part is fixed, see B6) |
 | L2 | Pagination cursors aren't tied to the filters | Hash the filters into the cursor scope |
 | L3 | "Channel not supported" returns 502 | Should be 409/422: a contract change |
 | L6 | No request ID linking a 500 to its log line | Add a middleware + `instance` id |
@@ -675,3 +675,17 @@ code before acting on it.
 dependency rule is respected, the use cases are fully decoupled, and the reliability design (idempotency,
 save-then-confirm) is right. The weak parts are mostly **edges**: error masking, uncapped waits, config
 validation, a network-exposed database, and lost rejects. All are fixable without changing the architecture.
+
+
+## B6. Saturday hardening, 2026-11-25 (security and speed)
+
+| # | Finding | Fix |
+|---|---|---|
+| M4b | Every API request opened a new database connection: **~55 ms** each time (measured), and the web app polls every few seconds | A small connection pool (`psycopg_pool`, [pool.py](../kiakia/adapters/postgres/pool.py)): connections are checked before use, so a database restart is survived; no free connection in 5 s → 503, as before |
+| S1 | No browser security headers on an API holding personal data | [security.py](../kiakia/api/security.py): `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy`, strict CSP on data responses, `Cache-Control: no-store` on every `/v1` answer |
+| S2 | An unusual network error (e.g. an answer cut off half-way) escaped the HTTP client as a raw `requests` error, whose message can hold the URL, and Telegram's URL holds the bot token | Caught: GETs retry, a send becomes `DeliveryUnknown` (never retried, never a double message); only the error's class name is kept |
+| S3 | Security review of the email channel: a customer could copy our reply's `Message-ID` into a new email and the import would **overwrite our stored reply** with their words (same unique key, no direction check) | Incoming email ids get an `in:` prefix ([parser.py](../kiakia/adapters/email/parser.py)), and the message upsert only updates a row going the **same direction**, on every channel. Regression tests replay the attack |
+
+Checked and already fine: all SQL is parameterised; exports guard against spreadsheet formulas; the
+database and API listen on 127.0.0.1 only; secrets are `SecretStr` and `.env` is git-ignored; `npm audit`
+and `pip-audit` report no known vulnerabilities.

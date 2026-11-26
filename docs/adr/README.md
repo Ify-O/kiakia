@@ -17,5 +17,6 @@ changed first, and an ADR explains why.**
 | [0007](0007-customer-list-with-recorded-consent.md) | A light customer list, with consent asked in the chat and recorded (NDPA, platform rules) | Accepted |
 | [0008](0008-demo-mode.md) | Demo mode: own database, fake customers, offline delivery, clearly labelled | Accepted |
 | [0009](0009-customer-rights-and-export.md) | Customer rights (withdraw, forget) and a consented CSV/Excel export for ads | Accepted |
+| [0010](0010-email-channel.md) | Email as the second live channel: IMAP in, SMTP out, only new mail, robots ignored | Accepted |
 
 Template: Status · Context · Decision · Consequences.
