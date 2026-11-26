@@ -24,7 +24,8 @@ Needs uv, Docker (Colima is fine), Node 22 and a filled-in `.env` (see "How to r
 Then open http://localhost:5173. Ctrl+C stops everything.
 
 - **Live messages:** `uv run python -m kiakia.cli watch` keeps listening to Telegram (long polling),
-  so new messages appear in the inbox within seconds. The start script runs it for you.
+  and `watch --channel email` checks the email inbox every 10 s (see "Email channel" below),
+  so new messages appear in the inbox within seconds. The start script runs both for you.
 - **Demo mode** ([ADR 0008](docs/adr/0008-demo-mode.md)): `KIAKIA_DEMO=1` with a database whose name
   ends in `demo` (the script creates `kiakia_demo`). `seed-demo` resets and fills it.
   `import` and `watch` are disabled, and the web app shows a 🎬 ribbon.
@@ -35,6 +36,21 @@ Then open http://localhost:5173. Ctrl+C stops everything.
   File → Import) or a Google Ads Customer Match file. Only customers who said YES to offers are included.
   API: `GET /v1/exports/customers?format=csv|xlsx&layout=standard|google-ads`.
 - **Presenting?** Follow [docs/DEMO.md](docs/DEMO.md).
+
+## Email channel (ADR 0010)
+
+Customers can also write to the business by email; replies from the inbox go out by email.
+Details and the security choices: [docs/adr/0010-email-channel.md](docs/adr/0010-email-channel.md).
+
+1. Use a **mailbox made for the business** (e.g. a new Gmail account), not your personal one.
+2. Gmail: turn on **2-Step Verification**, then create an **app password** at
+   https://myaccount.google.com/apppasswords. Never use the normal password.
+3. In `.env`: `EMAIL_ADDRESS=…`, `EMAIL_APP_PASSWORD=…` (and optionally `EMAIL_DISPLAY_NAME=Ada's Bags`).
+4. `./scripts/start.sh` now also runs the email watcher. Or run it alone:
+   `uv run python -m kiakia.cli watch --channel email`.
+
+Only mail that arrives **after** the first connection is imported (your old mail is never read),
+the inbox is opened read-only, and newsletters, auto-replies and no-reply senders are ignored.
 
 ## Week 1: Telegram importer
 

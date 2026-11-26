@@ -73,6 +73,11 @@ if [[ $DEMO == 0 ]]; then
   say "▶ Live Telegram watcher…"
   uv run --quiet python -m kiakia.cli watch &
   pids+=($!)
+  if [[ -n "${EMAIL_ADDRESS:-}" ]]; then
+    say "▶ Live email watcher ($EMAIL_ADDRESS)…"
+    uv run --quiet python -m kiakia.cli watch --channel email &
+    pids+=($!)
+  fi
 fi
 
 say "▶ Web app…"
@@ -88,7 +93,7 @@ echo
 if [[ $DEMO == 1 ]]; then
   say "🎬 Kiakia DEMO is running: open http://localhost:5173  (fake customers, nothing is sent)"
 else
-  say "⚡ Kiakia is running: open http://localhost:5173  (new Telegram messages appear live)"
+  say "⚡ Kiakia is running: open http://localhost:5173  (new Telegram${EMAIL_ADDRESS:+ and email} messages appear live)"
 fi
 say "   API docs: http://localhost:8000/docs   ·   Press Ctrl+C to stop everything."
 wait

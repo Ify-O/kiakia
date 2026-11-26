@@ -6,6 +6,7 @@ for ready-made use cases, so the future web API can reuse the same wiring.
     python -m kiakia.cli import --limit 10   # start small
     python -m kiakia.cli import              # everything pending
     python -m kiakia.cli watch               # keep importing live (Ctrl+C to stop)
+    python -m kiakia.cli watch --channel email   # the same for the email inbox (docs/adr/0010)
     python -m kiakia.cli waiting             # customers still waiting for a reply
     python -m kiakia.cli stats               # what's in the database
 """
@@ -20,18 +21,38 @@ from datetime import UTC, datetime, timedelta
 from kiakia.application.import_messages import ImportMessages
 from kiakia.application.watch import WatchMessages
 from kiakia.bootstrap import app
-from kiakia.config import ConfigError, load_settings
+from kiakia.config import ConfigError, Settings, load_settings
 from kiakia.demo_seed import seed
 from kiakia.domain.errors import KiakiaError
+from kiakia.domain.models import Channel
+
+IMPORT_CHANNELS = (Channel.TELEGRAM.value, Channel.EMAIL.value)
+_NAMES = {Channel.TELEGRAM: "Telegram", Channel.EMAIL: "the email inbox"}
+
+
+def _settings_for(channel: Channel) -> Settings:
+    return load_settings(require_telegram=channel is Channel.TELEGRAM)
 
 
 def cmd_import(args: argparse.Namespace) -> None:
-    with app(load_settings()) as services:
-        s = services.import_messages().run(max_records=args.limit)
+    channel = Channel(args.channel)
+    with app(_settings_for(channel)) as services:
+        importer = services.import_messages(channel=channel)
+        try:
+            s = importer.run(max_records=args.limit)
+        finally:
+            _close_source(importer)
     print(
         f"Imported from {s.source}: {s.seen} updates in {s.batches} batch(es) -> "
         f"{s.saved} messages saved, {s.ignored} ignored, {s.bad} bad (kept in rejected_updates)."
     )
+
+
+def _close_source(importer: ImportMessages) -> None:
+    """Sources that keep a connection open (the email inbox) are closed when we're done."""
+    close = getattr(importer.source, "close", None)
+    if callable(close):
+        close()
 
 
 def _ago(delta: timedelta) -> str:
@@ -46,15 +67,18 @@ def _ago(delta: timedelta) -> str:
 
 def cmd_watch(args: argparse.Namespace) -> None:
     """Keep importing new messages live (long polling). Stop with Ctrl+C."""
-    settings = load_settings()
-    print("👀 Watching Telegram for new messages (Ctrl+C to stop)…", flush=True)
+    channel = Channel(args.channel)
+    settings = _settings_for(channel)
+    print(f"👀 Watching {_NAMES[channel]} for new messages (Ctrl+C to stop)…", flush=True)
     with ExitStack() as connection:
 
         def fresh_importer() -> ImportMessages:
             """Close the old (maybe dead) database connection and open a new one."""
-            connection.close()
+            connection.close()  # also closes the old mailbox connection, if any
             services = connection.enter_context(app(settings))
-            return services.import_messages(wait_seconds=25)
+            importer = services.import_messages(wait_seconds=25, channel=channel)
+            connection.callback(_close_source, importer)
+            return importer
 
         try:
             watcher = WatchMessages(fresh_importer(), sleep=time.sleep, reconnect=fresh_importer)
@@ -105,10 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p_import = sub.add_parser("import", help="fetch new messages and store them")
     p_import.add_argument("--limit", type=int, default=None, help="stop after N updates (start small)")
+    p_import.add_argument("--channel", choices=IMPORT_CHANNELS, default="telegram")
     p_import.set_defaults(func=cmd_import)
-    sub.add_parser("watch", help="keep importing new messages live (Ctrl+C to stop)").set_defaults(
-        func=cmd_watch
-    )
+    p_watch = sub.add_parser("watch", help="keep importing new messages live (Ctrl+C to stop)")
+    p_watch.add_argument("--channel", choices=IMPORT_CHANNELS, default="telegram")
+    p_watch.set_defaults(func=cmd_watch)
     sub.add_parser("waiting", help="customers still waiting for a reply").set_defaults(func=cmd_waiting)
     sub.add_parser("seed-demo", help="demo mode only: reset + fill the demo database").set_defaults(
         func=cmd_seed_demo

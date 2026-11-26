@@ -215,3 +215,26 @@ def test_long_polling_asks_telegram_to_wait_but_never_longer_than_the_read_timeo
     client.get_updates(offset=None, wait_seconds=25)
     client.get_updates(offset=None, wait_seconds=999)
     assert [c["params"]["timeout"] for c in session.calls] == [25, 25]
+
+
+def test_other_request_errors_are_retried_and_never_show_the_url():
+    # e.g. Telegram's answer broke off half-way. The message would contain the URL (and so the
+    # bot token), so only the error's class name may appear in what we log and raise.
+    secret_url = "https://api.telegram.org/botSECRET-TOKEN/getUpdates"
+    broken = requests.exceptions.ChunkedEncodingError(f"broken while reading {secret_url}")
+    http, session, _ = make_client([broken] * 5)
+    with pytest.raises(SourceUnavailable) as caught:
+        http.get_json(secret_url, label="telegram getUpdates")
+    assert "ChunkedEncodingError" in str(caught.value)
+    assert "SECRET-TOKEN" not in str(caught.value)
+    assert len(session.calls) == 5
+
+
+def test_post_other_request_error_is_delivery_unknown_and_never_retried():
+    secret_url = "https://api.telegram.org/botSECRET-TOKEN/sendMessage"
+    broken = requests.exceptions.ChunkedEncodingError(f"broken while reading {secret_url}")
+    http, session, sleeps = make_poster([broken, response(200, {"ok": True})])
+    with pytest.raises(DeliveryUnknown) as caught:
+        http.post_json_unsafe(secret_url, json_body={})
+    assert "SECRET-TOKEN" not in str(caught.value)
+    assert len(session.calls) == 1 and sleeps == []
