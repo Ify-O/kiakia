@@ -31,11 +31,14 @@ def test_requests_reuse_the_same_open_connection(settings):
 
 def test_connection_is_given_back_even_when_the_request_fails(settings):
     pool = api_pool(settings)
+    pool.wait()  # the first connection opens in the background; wait so the pool holds exactly one
     try:
-        with pytest.raises(RuntimeError), pooled_app(pool, settings, {}):
+        with pytest.raises(RuntimeError), pooled_app(pool, settings, {}) as services:
+            lent = services.store._conn
             raise RuntimeError("boom")
-        stats = pool.get_stats()
-        assert stats["pool_available"] == stats["pool_size"]  # every connection is back
+        # Given back: the next request gets the SAME connection, still open (not a new one).
+        with pooled_app(pool, settings, {}) as services:
+            assert services.store._conn is lent and not lent.closed
     finally:
         pool.close()
 
